@@ -18,7 +18,6 @@ from parameters import (
 PRED_DT = 0.004
 UPDATE_DT = 0.004
 PRED_STEPS_PER_UPDATE = int(UPDATE_DT / PRED_DT)
-GYRO_RAD_TO_DEG = 180.0 / np.pi
 INIT_TIME = 5 # seconds
 
 # ---- Helpers ----
@@ -130,34 +129,6 @@ def compute_initial_quaternion(accel, mag):
     q_init = rotation_matrix_to_quaternion(R)
     return q_init
 
-def integrate_gyro_euler(q_prev, gyro, dt):
-    """
-    Integrate gyro rates using Euler angles:
-    - Convert q_prev (quaternion) to Euler angles (roll, pitch, yaw)
-    - Add gyro * dt to each angle
-    - Convert back to quaternion and return
-    """
-    # q_prev: [qw, qx, qy, qz]
-    # gyro: [gx, gy, gz] in rad/s
-
-    q_w, q_x, q_y, q_z = q_prev
-    w_x, w_y, w_z = gyro
-
-    q_w_next = dt*(q_x*(- 0.5*w_x) + q_y*(- 0.5*w_y) + q_z*(- 0.5*w_z)) + q_w
-    q_x_next = dt*(q_w*(0.5*w_x) + q_y*(0.5*w_z) + q_z*(- 0.5*w_y)) + q_x
-    q_y_next = dt*(q_w*(0.5*w_y) + q_x*(- 0.5*w_z) + q_z*(0.5*w_x)) + q_y 
-    q_z_next = dt*(q_w*(0.5*w_z) + q_x*(0.5*w_y) + q_y*(- 0.5*w_x)) + q_z
-
-    quat_new = np.array([q_w_next, q_x_next, q_y_next, q_z_next])
-    return quat_new
-
-def get_latest_index(timestamps, curr_time):
-    """
-    Returns the index of the latest timestamp at or before curr_time.
-    """
-    idx = np.searchsorted(timestamps, curr_time, side='right') - 1
-    idx = max(idx, 0)
-    return idx
 
 def run_test(filename, with_nn=False):
     # ---- Load ULog ----
@@ -262,7 +233,7 @@ def run_test(filename, with_nn=False):
             # position_full.update_ekf_history(time=curr_time)
 
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
-        gyro_filtered = sensor_combined_gyro.get_data(curr_time) #* GYRO_RAD_TO_DEG
+        gyro_filtered = sensor_combined_gyro.get_data(curr_time)
         magnetometer_filtered = sensor_mag.get_data(curr_time)
         baro_pressure_filtered = sensor_baro.get_data(curr_time)
 
@@ -316,16 +287,12 @@ def run_test(filename, with_nn=False):
     )
     for curr_time in np.arange(start_time_0, end_time, PRED_DT):
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
-        gyro_filtered = sensor_combined_gyro.get_data(curr_time) #* GYRO_RAD_TO_DEG
+        gyro_filtered = sensor_combined_gyro.get_data(curr_time)
         orientation_pred.current_input = np.array(gyro_filtered)
         position_pred.current_input = np.array(accelerometer_filtered)
         position_pred.update_orientation(orientation_pred.current_state[:4])
 
-        # Direct quaternion integration instead of EKF predict
-        orientation_pred.current_state[:4] = integrate_gyro_euler(
-            orientation_pred.current_state[:4], gyro_filtered, PRED_DT
-        )
-
+        orientation_pred.predict()
         position_pred.predict()
         # position_full.current_state[5] = velocity_z_low_pass_filter.update(
         #     position_full.current_state[5]
@@ -350,7 +317,7 @@ def run_test(filename, with_nn=False):
     # ---- Scenario 3: Update Only ----
     for curr_time in time_steps:
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
-        gyro_filtered = sensor_combined_gyro.get_data(curr_time) #* GYRO_RAD_TO_DEG
+        gyro_filtered = sensor_combined_gyro.get_data(curr_time)
         magnetometer_filtered = sensor_mag.get_data(curr_time)
         baro_pressure_filtered = sensor_baro.get_data(curr_time)
 
@@ -363,7 +330,6 @@ def run_test(filename, with_nn=False):
         orientation_upd.update_ekf_history(time=curr_time)
 
         # Position EKF Update — manual
-        print(baro_pressure_filtered / position_upd.PRESSURE_SEA_LEVEL_Pa)
         pz = (
             np.log(baro_pressure_filtered / position_upd.PRESSURE_SEA_LEVEL_Pa) *
             position_upd.ROOM_TEMPERATURE_K *
@@ -426,7 +392,7 @@ def run_test(filename, with_nn=False):
                 position_full_nn.update_ekf_history(time=curr_time)
 
             accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
-            gyro_filtered = sensor_combined_gyro.get_data(curr_time) #* GYRO_RAD_TO_DEG
+            gyro_filtered = sensor_combined_gyro.get_data(curr_time)
             magnetometer_filtered = sensor_mag.get_data(curr_time)
             baro_pressure_filtered = sensor_baro.get_data(curr_time)
 
