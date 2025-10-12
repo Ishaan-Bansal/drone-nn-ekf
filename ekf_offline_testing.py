@@ -129,7 +129,7 @@ def compute_initial_quaternion(accel, mag):
     q_init = rotation_matrix_to_quaternion(R)
     return q_init
 
-
+# ---- Main Testing Function ----
 def run_test(filename, with_nn=False):
     # ---- Load ULog ----
     ulog = ULog(f'flight_data\{filename}.ulg')
@@ -143,7 +143,7 @@ def run_test(filename, with_nn=False):
     timestamps_combined = sensor_combined_msgs.data['timestamp'] * 1e-6
     timestamps_baro = baro_msgs.data['timestamp'] * 1e-6
 
-    # ---- Create Sensor Instances ----
+    # ---- Sensor Instances ----
     sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
     sensor_combined_accel = Sensor_3D(
         'accelerometer', sensor_combined_msgs,
@@ -175,13 +175,17 @@ def run_test(filename, with_nn=False):
 
     print("EKF boot up")
 
+    # ---- Initialize EKF ----
+
     init_accel = sensor_combined_accel.get_data(INIT_TIME)
     init_mag = sensor_mag.get_data(INIT_TIME)
     init_gyro = sensor_combined_gyro.get_data(INIT_TIME)
     init_baro = sensor_baro.get_data(INIT_TIME)
 
     init_quat = compute_initial_quaternion(init_accel, init_mag)
-    euler = R.from_quat([init_quat[1], init_quat[2], init_quat[3], init_quat[0]]).as_euler('xyz', degrees=True) # scipy uses x,y,z,w
+    euler = R.from_quat(
+        [init_quat[1], init_quat[2], init_quat[3], init_quat[0]]
+    ).as_euler('xyz', degrees=True) # scipy uses x,y,z,w
     print("Initial EKF Euler angles:", euler)
 
     def init_orientation_ekf():
@@ -264,8 +268,8 @@ def run_test(filename, with_nn=False):
         # ) TODO: Do this in estimator.py
         position_full.update_ekf_history(time=curr_time)
 
-
-    # ---- Sensor Restart ----
+    # ---- Scenario 2: Predict  ----
+    # Sensor Restart
     sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
     sensor_combined_accel = Sensor_3D(
         'accelerometer', sensor_combined_msgs,
@@ -279,13 +283,12 @@ def run_test(filename, with_nn=False):
     )
     sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
 
-    # ---- Scenario 2: Predict  ----
-    start_time_0 = max(
+    start_time = max(
         timestamps_mag[0],
         timestamps_combined[0],
         timestamps_baro[0]
     )
-    for curr_time in np.arange(start_time_0, end_time, PRED_DT):
+    for curr_time in np.arange(start_time, end_time, PRED_DT):
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
         gyro_filtered = sensor_combined_gyro.get_data(curr_time)
         orientation_pred.current_input = np.array(gyro_filtered)
@@ -300,7 +303,8 @@ def run_test(filename, with_nn=False):
         orientation_pred.update_ekf_history(time=curr_time)
         position_pred.update_ekf_history(time=curr_time)
 
-    # ---- Sensor Restart ----
+    # ---- Scenario 3: Update Only ----
+    # Sensor Restart
     sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
     sensor_combined_accel = Sensor_3D(
         'accelerometer', sensor_combined_msgs,
@@ -314,7 +318,6 @@ def run_test(filename, with_nn=False):
     )
     sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
 
-    # ---- Scenario 3: Update Only ----
     for curr_time in time_steps:
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
         gyro_filtered = sensor_combined_gyro.get_data(curr_time)
@@ -341,22 +344,23 @@ def run_test(filename, with_nn=False):
         position_upd.current_state[2] = pz
         position_upd.update_ekf_history(time=curr_time)
 
-    # ---- Sensor Restart ----
-    sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
-    sensor_combined_accel = Sensor_3D(
-        'accelerometer', sensor_combined_msgs,
-        ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-        alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
-    )
-    sensor_combined_gyro = Sensor_3D(
-        'gyroscope', sensor_combined_msgs,
-        ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
-        alpha=GYRO_LPF_ALPHA
-    )
-    sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
-
     # ---- Scenario 4: Full EKF + NN ----
     if with_nn:
+        # Sensor Restart
+        sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
+        sensor_combined_accel = Sensor_3D(
+            'accelerometer', sensor_combined_msgs,
+            ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
+            alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
+        )
+        sensor_combined_gyro = Sensor_3D(
+            'gyroscope', sensor_combined_msgs,
+            ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
+            alpha=GYRO_LPF_ALPHA
+        )
+        sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
+
+        # Load Neural Net model
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Instantiate model with correct sizes (adjust these to your training config)
@@ -378,6 +382,7 @@ def run_test(filename, with_nn=False):
         input_mean = normalization_stats["input_mean"]
         input_std = normalization_stats["input_std"]
 
+        # Testing loop
         for curr_time in time_steps:
             # Prediction steps
             for _ in range(PRED_STEPS_PER_UPDATE):
@@ -387,7 +392,7 @@ def run_test(filename, with_nn=False):
                 position_full_nn.predict()
                 # position_full_nn.current_state[5] = velocity_z_low_pass_filter.update(
                 #     position_full_nn.current_state[5]
-                # )
+                # ) TODO: Do this in estimator.py
                 orientation_full_nn.update_ekf_history(time=curr_time)
                 position_full_nn.update_ekf_history(time=curr_time)
 
