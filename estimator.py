@@ -327,7 +327,7 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             0.0, 0.0, -self.GRAVITATION_ACCELERATION_ms2, 
         ])
 
-        observation_equilibrium = np.array([barometer_reading])
+        observation_equilibrium = barometer_reading
 
         state_dict = {
             "position (x) [m]": [0.0],
@@ -343,7 +343,7 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             "accelerometer (z)": [accelerometer_reading[2]],
         }
         observation_dict = {
-            "barometer pressure [Pa]": [barometer_reading],
+            "barometer pressure [Pa]": [barometer_reading[0]],
         }
         process_noise_covariance_Q = np.diag([
             1.0e10, # px
