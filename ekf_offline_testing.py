@@ -232,9 +232,6 @@ def run_test(filename, with_nn=False):
             orientation_full.predict()
             position_full.update_orientation(orientation_full.current_state[:4])
             position_full.predict()
-            # position_full.current_state[5] = velocity_z_low_pass_filter.update(
-            #     position_full.current_state[5]
-            # ) TODO: Do this in estimator.py
             # orientation_full.update_ekf_history(time=curr_time)
             # position_full.update_ekf_history(time=curr_time)
 
@@ -265,9 +262,6 @@ def run_test(filename, with_nn=False):
         )
         position_full.update_orientation(orientation_full.current_state[:4])
         position_full.update()
-        # position_full.current_state[5] = velocity_z_low_pass_filter.update(
-        #     position_full.current_state[5]
-        # ) TODO: Do this in estimator.py
         position_full.update_ekf_history(time=curr_time)
 
     # ---- Scenario 2: Predict  ----
@@ -302,9 +296,6 @@ def run_test(filename, with_nn=False):
 
         orientation_pred.predict()
         position_pred.predict()
-        # position_full.current_state[5] = velocity_z_low_pass_filter.update(
-        #     position_full.current_state[5]
-        # ) TODO: Do this in estimator.py
         orientation_pred.update_ekf_history(time=curr_time)
         position_pred.update_ekf_history(time=curr_time)
 
@@ -401,9 +392,6 @@ def run_test(filename, with_nn=False):
                 orientation_full_nn.predict()
                 position_full_nn.update_orientation(orientation_full_nn.current_state[:4])
                 position_full_nn.predict()
-                # position_full_nn.current_state[5] = velocity_z_low_pass_filter.update(
-                #     position_full_nn.current_state[5]
-                # ) TODO: Do this in estimator.py
                 orientation_full_nn.update_ekf_history(time=curr_time)
                 position_full_nn.update_ekf_history(time=curr_time)
 
@@ -463,9 +451,6 @@ def run_test(filename, with_nn=False):
             )
             position_full_nn.update_orientation(orientation_full_nn.current_state[:4])
             position_full_nn.update()
-            # position_full_nn.current_state[5] = velocity_z_low_pass_filter.update(
-            #     position_full_nn.current_state[5]
-            # ) TODO: Do this in estimator.py 
             position_full_nn.update_ekf_history(time=curr_time)
 
 
