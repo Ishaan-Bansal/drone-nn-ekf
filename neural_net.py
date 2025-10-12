@@ -5,7 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
 from pyulog import ULog
-from signal_filters import LowPassFilter_1D, LowPassFilter_3D
+from signal_filters import LowPassFilter
 from parameters import (
     TRAINING_FILES, TEST_FILES, 
     NUM_EPOCHS, NUM_NEURONS, NUM_LAYERS, BATCH_SIZE, LEARNING_RATE,
@@ -123,10 +123,12 @@ class EKFResidualDataset(Dataset):
             mag_time = mag.data['timestamp'] * 1e-6
             mag_data = np.vstack([mag.data['x'], mag.data['y'], mag.data['z']]).T
 
-            accel_lpf = LowPassFilter_3D(alpha=ACCEL_LPF_ALPHA)
-            gyro_lpf  = LowPassFilter_3D(alpha=GYRO_LPF_ALPHA)
-            mag_lpf   = LowPassFilter_3D(alpha=MAG_LPF_ALPHA)
-            baro_lpf  = LowPassFilter_1D(alpha=BARO_LPF_ALPHA)
+            accel_lpf = LowPassFilter(
+                alpha=np.array([ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
+            ))
+            gyro_lpf = LowPassFilter(alpha=np.ones(3)*GYRO_LPF_ALPHA)
+            mag_lpf = LowPassFilter(alpha=np.ones(3)*MAG_LPF_ALPHA)
+            baro_lpf = LowPassFilter(alpha=np.ones(1)*BARO_LPF_ALPHA)
 
             # Iterate through EKF times
             for idx, t_ekf in enumerate(ekf_time):
@@ -157,7 +159,7 @@ class EKFResidualDataset(Dataset):
                 sensor_vec = np.concatenate([
                     accel_vec_filt,
                     gyro_vec_filt,
-                    [baro_val_filt],
+                    baro_val_filt,
                     mag_vec_filt
                 ])
                 nn_input = np.concatenate([ekf_states[idx], sensor_vec])
