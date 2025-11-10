@@ -198,34 +198,33 @@ class Orientation_EKF(Extended_Kalman_Filter):
             "accelerometer (z)": [accelerometer_reading[2]],
             "magnetometer (x)": [magnetometer_reading[0]],
             "magnetometer (y)": [magnetometer_reading[1]],
-            "magnetometer (z)": [magnetometer_reading[2]]
-            
+            "magnetometer (z)": [magnetometer_reading[2]]   
         }
         process_noise_covariance_Q = np.diag([
-            1.0e6, # qw
-            1.0e6, # qx
-            1.0e6, # qy
-            1.0e6, # qz
-            1.0e0, # gyro bias (x)
-            1.0e0, # gyro bias (y)
-            1.0e0, # gyro bias (z)
-            1.0e0, # magnetometer bias (x)
-            1.0e0, # magnetometer bias (y)
-            1.0e0, # magnetometer bias (z)
+            1.0e-2, # qw
+            1.0e-2, # qx
+            1.0e-2, # qy
+            1.0e-2, # qz
+            1.0e1, # gyro bias (x)
+            1.0e1, # gyro bias (y)
+            1.0e1, # gyro bias (z)
+            1.0e1, # magnetometer bias (x)
+            1.0e1, # magnetometer bias (y)
+            1.0e1, # magnetometer bias (z)
         ])
         measurement_noise_covariance_R = np.diag([
-            1.0e0, # accelerometer (x)
-            1.0e0, # accelerometer (y)
-            1.0e0, # accelerometer (z)
-            1.0e0, # magnetometer (x)
-            1.0e0, # magnetometer (y)
-            1.0e0, # magnetometer (z)
+            1.0e-1, # accelerometer (x)
+            1.0e-1, # accelerometer (y)
+            1.0e-1, # accelerometer (z)
+            1.0e-1, # magnetometer (x)
+            1.0e-1, # magnetometer (y)
+            1.0e-1, # magnetometer (z)
         ])
         super().__init__(
             state_dict, input_dict, observation_dict, 
             process_noise_covariance_Q, measurement_noise_covariance_R,
             state_equilibrium, input_equilibrium, observation_equilibrium,
-            lpf_alpha=ORIENTATION_LPF_ALPHA
+            lpf_alpha=None
         )
 
     def get_state_transition_matrix_A(self) -> np.ndarray:
@@ -253,9 +252,9 @@ class Orientation_EKF(Extended_Kalman_Filter):
         q_w, q_x, q_y, q_z = self.current_state[:4]
         
         observation_matrix = np.array([
-            [-2*g*q_y, 2*g*q_z, -2*g*q_w, 2*g*q_x, 0, 0, 0, 0, 0, 0], 
-            [2*g*q_x, 2*g*q_w, 2*g*q_z, 2*g*q_y, 0, 0, 0, 0, 0, 0], 
-            [0, -4*g*q_x, -4*g*q_y, 0, 0, 0, 0, 0, 0, 0], 
+            [2*g*q_y, -2*g*q_z, 2*g*q_w, -2*g*q_x, 0, 0, 0, 0, 0, 0], 
+            [-2*g*q_x, -2*g*q_w, -2*g*q_z, -2*g*q_y, 0, 0, 0, 0, 0, 0], 
+            [0, 4*g*q_x, 4*g*q_y, 0, 0, 0, 0, 0, 0, 0], 
             [
                 2*m_y*q_z - 2*m_z*q_y, 
                 2*m_y*q_y + 2*m_z*q_z, 
