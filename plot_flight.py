@@ -2,7 +2,7 @@ from pyulog import ULog
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
-from signal_filters import LowPassFilter_3D, LowPassFilter_1D
+from signal_filters import LowPassFilter
 from parameters import (
     ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z,
     MAG_LPF_ALPHA, GYRO_LPF_ALPHA, BARO_LPF_ALPHA,
@@ -87,13 +87,12 @@ def plot_raw_and_filtered_3d_sensor_data(sensor_topic, time_array, filter_instan
     plt.tight_layout()
     return filtered_data
 
-accelerometer_low_pass_filter_orientation = LowPassFilter_3D(
-    alpha=None,
-    alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z],
+accelerometer_low_pass_filter_orientation = LowPassFilter(
+    alpha=np.array([ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]),
 )
-magnetometer_low_pass_filter = LowPassFilter_3D(alpha=MAG_LPF_ALPHA)
-gyro_low_pass_filter = LowPassFilter_3D(alpha=GYRO_LPF_ALPHA)
-baro_low_pass_filter = LowPassFilter_1D(alpha=BARO_LPF_ALPHA)
+magnetometer_low_pass_filter = LowPassFilter(alpha=np.ones(3)*MAG_LPF_ALPHA)
+gyro_low_pass_filter = LowPassFilter(alpha=np.ones(3)*GYRO_LPF_ALPHA)
+baro_low_pass_filter = LowPassFilter(alpha=np.ones(1)*BARO_LPF_ALPHA)
 
 # For accelerometer orientation filtered data
 accel_filtered = plot_raw_and_filtered_3d_sensor_data(
@@ -129,7 +128,7 @@ t_baro = sensor_baro_topic.data['timestamp'] * 1e-6
 print("Average timestep (BARO)= ", np.mean(np.diff(t_baro)))
 pressure_filtered = []
 for p in pressure:
-    pressure_filtered.append(baro_low_pass_filter.update(p))
+    pressure_filtered.append(baro_low_pass_filter.update(np.array([p])))
 
 fig_baro_pressure_filtered = plt.figure()
 plt.plot(t_baro, pressure, label='Raw Pressure')
