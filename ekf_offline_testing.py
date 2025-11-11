@@ -30,18 +30,18 @@ def acc_mag_to_quaternion(acc, mag):
     - Form quaternion from roll, pitch, yaw
     """
     # Normalize accelerometer measurement (gravity vector)
-    acc = acc / np.linalg.norm(acc)
+    acc = - acc / np.linalg.norm(acc)
     # Calculate pitch and roll
-    pitch = np.arcsin(-acc[0])
+    pitch = np.arcsin(acc[0])
     roll = np.arctan2(acc[1], acc[2])
 
     # Normalize magnetometer measurement
     mag = mag / np.linalg.norm(mag)
     # Compensate magnetometer readings with pitch and roll
-    mx = mag[0]*np.cos(pitch) + mag[2]*np.sin(pitch)
-    my = mag[0]*np.sin(roll)*np.sin(pitch) + mag[1]*np.cos(roll) - mag[2]*np.sin(roll)*np.cos(pitch)
+    mx = mag[0]*np.cos(pitch)*np.cos(roll) + mag[1]*np.cos(pitch)*np.sin(roll) - mag[2]*np.sin(pitch)
+    mz = mag[0]*np.cos(roll)*np.sin(pitch) + mag[1]*np.sin(pitch)*np.sin(roll) + mag[2]*np.cos(pitch)
     # Compute yaw
-    yaw = np.arctan2(my, mx)
+    yaw = np.arctan2(mz, mx)
 
     # Convert roll, pitch, yaw to quaternion
     cy = np.cos(yaw * 0.5)
@@ -57,76 +57,6 @@ def acc_mag_to_quaternion(acc, mag):
     qz = cr * cp * sy - sr * sp * cy
 
     return np.array([qw, qx, qy, qz])
-
-def rotation_matrix_to_quaternion(R):
-    """Convert a 3x3 rotation matrix to a (w, x, y, z) quaternion."""
-    m00, m01, m02 = R[0, :]
-    m10, m11, m12 = R[1, :]
-    m20, m21, m22 = R[2, :]
-
-    tr = m00 + m11 + m22
-
-    if tr > 0:
-        S = np.sqrt(tr + 1.0) * 2  # S=4*qw
-        qw = 0.25 * S
-        qx = (m21 - m12) / S
-        qy = (m02 - m20) / S
-        qz = (m10 - m01) / S
-    elif (m00 > m11) and (m00 > m22):
-        S = np.sqrt(1.0 + m00 - m11 - m22) * 2  # S=4*qx
-        qw = (m21 - m12) / S
-        qx = 0.25 * S
-        qy = (m01 + m10) / S
-        qz = (m02 + m20) / S
-    elif m11 > m22:
-        S = np.sqrt(1.0 + m11 - m00 - m22) * 2  # S=4*qy
-        qw = (m02 - m20) / S
-        qx = (m01 + m10) / S
-        qy = 0.25 * S
-        qz = (m12 + m21) / S
-    else:
-        S = np.sqrt(1.0 + m22 - m00 - m11) * 2  # S=4*qz
-        qw = (m10 - m01) / S
-        qx = (m02 + m20) / S
-        qy = (m12 + m21) / S
-        qz = 0.25 * S
-
-    return np.array([qw, qx, qy, qz])
-
-def compute_initial_quaternion(accel, mag):
-    """
-    Compute an initial quaternion from accelerometer and magnetometer readings,
-    following PX4's convention: body frame is X-forward, Y-right, Z-down.
-    accel, mag are in body frame.
-    """
-
-    # Normalize accelerometer -> 'down' in body frame
-    down = accel / np.linalg.norm(accel)
-    if down[2] < 0:  # since gravity-reaction force pointing up in body frame
-        down = -down
-
-    # Normalize magnetometer -> magnetic north (in body frame)
-    north = mag / np.linalg.norm(mag)
-
-    # Compute east in body frame
-    east = np.cross(north, down)
-    east /= np.linalg.norm(east)
-
-    # Recompute north to ensure orthogonality
-    north = np.cross(down, east)
-    north /= np.linalg.norm(north)
-
-    # --- Build rotation matrix (body->world) with PX4 axis conventions ---
-    # PX4: x-forward, y-right, z-down
-    forward = north          # body X points toward north initially
-    right   = east           # body Y points east
-    down    = down           # body Z points downward
-
-    R = np.column_stack((forward, right, down))
-
-    # Convert to quaternion (Hamilton, w,x,y,z)
-    q_init = rotation_matrix_to_quaternion(R)
-    return q_init
 
 # ---- Main Testing Function ----
 def run_test(filename, with_nn=False):
@@ -161,11 +91,6 @@ def run_test(filename, with_nn=False):
 
     # ---- PX4 Estimator Attitude ----
     att_topic = next(x for x in ulog.data_list if x.name == 'vehicle_attitude')
-    t_att = att_topic.data['timestamp'] * 1e-6
-    qw_px4 = att_topic.data['q[0]']
-    qx_px4 = att_topic.data['q[1]']
-    qy_px4 = att_topic.data['q[2]']
-    qz_px4 = att_topic.data['q[3]']
 
     # ---- Time Alignment ----
     end_time = min(
@@ -184,7 +109,7 @@ def run_test(filename, with_nn=False):
     init_gyro = sensor_combined_gyro.get_data(INIT_TIME)
     init_baro = sensor_baro.get_data(INIT_TIME)
 
-    init_quat = compute_initial_quaternion(init_accel, init_mag)
+    init_quat = acc_mag_to_quaternion(init_accel, init_mag)
     euler = R.from_quat(
         [init_quat[1], init_quat[2], init_quat[3], init_quat[0]]
     ).as_euler('xyz', degrees=True) # scipy uses x,y,z,w
