@@ -11,8 +11,9 @@ AIR_MOLAR_MASS_kgmol = 0.0289644 # Molar mass of dry air [kg/mol]
 
 # --- Neural Net Parameters ---
 TRAINING_FILES = [
-    # "log_0_2025-8-15-20-14-26", # "log_2_2025-8-15-12-31-04", 
-    "log_0_2025-8-15-13-19-30", 
+    "log_0_2025-8-15-20-14-26", 
+    # "log_2_2025-8-15-12-31-04", 
+    # "log_0_2025-8-15-13-19-30", 
 ]
 TEST_FILES = [
 ]
@@ -42,3 +43,6 @@ POSITION_LPF_ALPHA = np.array([
     1, 1, 1, # Position (3)
     0.01, 0.01, 0.005, # Velocity (3)
 ])
+
+# EKF Testing Parameters
+INIT_TIME = 7.0 # seconds

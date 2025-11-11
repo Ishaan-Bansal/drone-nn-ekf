@@ -10,14 +10,14 @@ from parameters import (
     TRAINING_FILES, TEST_FILES,
     ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z,
     MAG_LPF_ALPHA, GYRO_LPF_ALPHA, BARO_LPF_ALPHA,
-    NUM_LAYERS, NUM_NEURONS
+    NUM_LAYERS, NUM_NEURONS,
+    INIT_TIME,
 )
 
 # ---- Constants ----
 PRED_DT = 0.004
 UPDATE_DT = 0.004
 PRED_STEPS_PER_UPDATE = int(UPDATE_DT / PRED_DT)
-INIT_TIME = 5 # seconds
 
 # ---- Helpers ----
 def acc_mag_to_quaternion(acc, mag):

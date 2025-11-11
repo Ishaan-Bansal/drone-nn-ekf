@@ -30,20 +30,8 @@ def quaternion_to_euler(w, x, y, z):
     yaw = np.arctan2(siny_cosp, cosy_cosp)
     return roll, pitch, yaw
 
-# --- Angle wraparound helper ---
-def wrap_angle_rad(angle):
-    """Wrap angle to [-pi, pi]."""
-    return (angle + np.pi) % (2 * np.pi) - np.pi
-
-def wrap_angle_deg(angle):
-    """Wrap angle to [-180, 180]."""
-    return (angle + 180.0) % 360.0 - 180.0
-
 # PX4 Euler angles
 roll_px4, pitch_px4, yaw_px4 = quaternion_to_euler(qw_px4, qx_px4, qy_px4, qz_px4)
-# px4_initial_yaw = yaw_px4[0]
-# yaw_px4_zeroed = wrap_angle_rad(yaw_px4 - px4_initial_yaw)
-yaw_px4_zeroed = yaw_px4
 
 # --- Load EKF outputs for each scenario ---
 orientation_full = pd.read_csv(f'./EKF_data/{filename}_orientation_ekf_full_states.csv')
@@ -92,7 +80,7 @@ axs[0].plot(t_att, qw_px4, label='PX4 qw', color=colors['PX4'])
 axs[0].plot(time_full, qw_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 axs[0].plot(time_pred, qw_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 axs[0].plot(time_upd, qw_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# axs[0].plot(time_nn, qw_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
+if WITH_NN: axs[0].plot(time_nn, qw_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
 axs[0].set_ylabel('qw')
 axs[0].legend()
 axs[0].grid()
@@ -101,7 +89,7 @@ axs[1].plot(t_att, qx_px4, label='PX4 qx', color=colors['PX4'])
 axs[1].plot(time_full, qx_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 axs[1].plot(time_pred, qx_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 axs[1].plot(time_upd, qx_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# axs[1].plot(time_nn, qx_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
+if WITH_NN: axs[1].plot(time_nn, qx_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
 axs[1].set_ylabel('qx')
 axs[1].legend()
 axs[1].grid()
@@ -110,7 +98,7 @@ axs[2].plot(t_att, qy_px4, label='PX4 qy', color=colors['PX4'])
 axs[2].plot(time_full, qy_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 axs[2].plot(time_pred, qy_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 axs[2].plot(time_upd, qy_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# axs[2].plot(time_nn, qy_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
+if WITH_NN: axs[2].plot(time_nn, qy_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
 axs[2].set_ylabel('qy')
 axs[2].legend()
 axs[2].grid()
@@ -119,7 +107,7 @@ axs[3].plot(t_att, qz_px4, label='PX4 qz', color=colors['PX4'])
 axs[3].plot(time_full, qz_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 axs[3].plot(time_pred, qz_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 axs[3].plot(time_upd, qz_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# axs[3].plot(time_nn, qz_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
+if WITH_NN: axs[3].plot(time_nn, qz_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
 axs[3].set_ylabel('qz')
 axs[3].set_xlabel('Time [s]')
 axs[3].legend()
@@ -134,7 +122,8 @@ ax1.plot(t_att, np.degrees(roll_px4), label='PX4 Roll', color=colors['PX4'])
 ax1.plot(time_full, np.degrees(roll_full), label='EKF Full', linestyle='-', color=colors['EKF Full'])
 ax1.plot(time_pred, np.degrees(roll_pred), label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 ax1.plot(time_upd, np.degrees(roll_upd), label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# ax1.plot(time_nn, np.degrees(roll_nn), label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
+if WITH_NN:
+    ax1.plot(time_nn, np.degrees(roll_nn), label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
 ax1.set_ylabel('Roll [deg]')
 ax1.grid()
 ax1.legend()
@@ -145,18 +134,20 @@ ax2.plot(t_att, np.degrees(pitch_px4), label='PX4 Pitch', color=colors['PX4'])
 ax2.plot(time_full, np.degrees(pitch_full), label='EKF Full', linestyle='-', color=colors['EKF Full'])
 ax2.plot(time_pred, np.degrees(pitch_pred), label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 ax2.plot(time_upd, np.degrees(pitch_upd), label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# ax2.plot(time_nn, np.degrees(pitch_nn), label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
+if WITH_NN: 
+    ax2.plot(time_nn, np.degrees(pitch_nn), label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
 ax2.set_ylabel('Pitch [deg]')
 ax2.grid()
 ax2.legend()
 ax2.set_title('Pitch Comparison')
 
 ax3 = fig_euler_comp.add_subplot(313)
-ax3.plot(t_att, np.degrees(yaw_px4_zeroed), label='PX4 Yaw (offset zeroed)', color=colors['PX4'])
-ax3.plot(time_full, np.degrees(wrap_angle_rad(yaw_full)), label='EKF Full', linestyle='-', color=colors['EKF Full'])
-ax3.plot(time_pred, np.degrees(wrap_angle_rad(yaw_pred)), label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
-ax3.plot(time_upd, np.degrees(wrap_angle_rad(yaw_upd)), label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# ax3.plot(time_nn, np.degrees(wrap_angle_rad(yaw_nn)), label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
+ax3.plot(t_att, np.degrees(yaw_px4), label='PX4 Yaw (offset zeroed)', color=colors['PX4'])
+ax3.plot(time_full, np.degrees(yaw_full), label='EKF Full', linestyle='-', color=colors['EKF Full'])
+ax3.plot(time_pred, np.degrees(yaw_pred), label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
+ax3.plot(time_upd, np.degrees(yaw_upd), label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
+if WITH_NN: 
+    ax3.plot(time_nn, np.degrees(yaw_nn), label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
 ax3.set_ylabel('Yaw [deg]')
 ax3.set_xlabel('Time [s]')
 ax3.grid()
@@ -170,6 +161,9 @@ t = pos_topic.data['timestamp'] * 1e-6
 x_px4 = pos_topic.data['x']
 y_px4 = pos_topic.data['y']
 z_px4 = pos_topic.data['z']
+vx_px4 = pos_topic.data['vx']
+vy_px4 = pos_topic.data['vy']
+vz_px4 = pos_topic.data['vz']
 
 # Remove offset
 x_px4 -= x_px4[0]
@@ -202,7 +196,7 @@ ax_pos_x.plot(t, x_px4, label='PX4 X', color=colors['PX4'])
 ax_pos_x.plot(time_full_pos, x_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 ax_pos_x.plot(time_pred_pos, x_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 ax_pos_x.plot(time_upd_pos, x_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# ax_pos_x.plot(time_nn_pos, x_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
+if WITH_NN: ax_pos_x.plot(time_nn_pos, x_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN'])
 ax_pos_x.set_ylabel('X Position [m]')
 ax_pos_x.grid()
 ax_pos_x.legend()
@@ -213,7 +207,8 @@ ax_pos_y.plot(t, y_px4, label='PX4 Y', color=colors['PX4'])
 ax_pos_y.plot(time_full_pos, y_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 ax_pos_y.plot(time_pred_pos, y_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 ax_pos_y.plot(time_upd_pos, y_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only']) 
-# ax_pos_y.plot(time_nn_pos, y_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
+if WITH_NN: 
+    ax_pos_y.plot(time_nn_pos, y_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
 ax_pos_y.set_ylabel('Y Position [m]')
 ax_pos_y.grid()
 ax_pos_y.legend()
@@ -224,7 +219,8 @@ ax_pos_z.plot(t, z_px4, label='PX4 Z', color=colors['PX4'])
 ax_pos_z.plot(time_full_pos, z_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 ax_pos_z.plot(time_pred_pos, z_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 ax_pos_z.plot(time_upd_pos, z_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# ax_pos_z.plot(time_nn_pos, z_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
+if WITH_NN: 
+    ax_pos_z.plot(time_nn_pos, z_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
 ax_pos_z.set_ylabel('Z Position [m]')
 ax_pos_z.set_xlabel('Time [s]')
 ax_pos_z.grid()
@@ -232,33 +228,36 @@ ax_pos_z.legend()
 ax_pos_z.set_title('Z Position Comparison')
 
 ax_vel_x = fig_pos.add_subplot(gs[0, 1])
-ax_vel_x.plot(t, pos_topic.data['vx'], label='PX4 Vx', color=colors['PX4'])
+ax_vel_x.plot(t, vx_px4, label='PX4 Vx', color=colors['PX4'])
 ax_vel_x.plot(time_full_pos, vx_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 ax_vel_x.plot(time_pred_pos, vx_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 ax_vel_x.plot(time_upd_pos, vx_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# ax_vel_x.plot(time_nn_pos, vx_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
+if WITH_NN: 
+    ax_vel_x.plot(time_nn_pos, vx_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
 ax_vel_x.set_ylabel('X Velocity [m/s]')
 ax_vel_x.grid()
 ax_vel_x.legend()
 ax_vel_x.set_title('X Velocity Comparison')
 
 ax_vel_y = fig_pos.add_subplot(gs[1, 1])
-ax_vel_y.plot(t, pos_topic.data['vy'], label='PX4 Vy', color=colors['PX4'])
+ax_vel_y.plot(t, vy_px4, label='PX4 Vy', color=colors['PX4'])
 ax_vel_y.plot(time_full_pos, vy_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 ax_vel_y.plot(time_pred_pos, vy_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 ax_vel_y.plot(time_upd_pos, vy_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# ax_vel_y.plot(time_nn_pos, vy_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
+if WITH_NN: 
+    ax_vel_y.plot(time_nn_pos, vy_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
 ax_vel_y.set_ylabel('Y Velocity [m/s]')
 ax_vel_y.grid()
 ax_vel_y.legend()
 ax_vel_y.set_title('Y Velocity Comparison')
 
 ax_vel_z = fig_pos.add_subplot(gs[2, 1])
-ax_vel_z.plot(t, pos_topic.data['vz'], label='PX4 Vz', color=colors['PX4'])
+ax_vel_z.plot(t, vz_px4, label='PX4 Vz', color=colors['PX4'])
 ax_vel_z.plot(time_full_pos, vz_full, label='EKF Full', linestyle='-', color=colors['EKF Full'])
 ax_vel_z.plot(time_pred_pos, vz_pred, label='Prediction Only', linestyle='--', color=colors['Prediction Only'])
 ax_vel_z.plot(time_upd_pos, vz_upd, label='Measurement Only', linestyle=':', color=colors['Measurement Only'])
-# ax_vel_z.plot(time_nn_pos, vz_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
+if WITH_NN: 
+    ax_vel_z.plot(time_nn_pos, vz_nn, label='EKF + NN', linestyle='-.', color=colors['EKF + NN']) # Blows up
 ax_vel_z.set_ylabel('Z Velocity [m/s]')
 ax_vel_z.set_xlabel('Time [s]')
 ax_vel_z.grid()
@@ -285,7 +284,7 @@ def angle_error_deg(px4_deg, ekf_rad):
 
 err_roll = angle_error_deg(np.degrees(roll_px4), interpolate_to_px4_time(t_att, time_full, roll_full))
 err_pitch = angle_error_deg(np.degrees(pitch_px4), interpolate_to_px4_time(t_att, time_full, pitch_full))
-err_yaw = angle_error_deg(np.degrees(yaw_px4_zeroed), interpolate_to_px4_time(t_att, time_full, yaw_full))
+err_yaw = angle_error_deg(np.degrees(yaw_px4), interpolate_to_px4_time(t_att, time_full, yaw_full))
 
 # Calculate signed error for position
 err_x = x_px4 - interpolate_to_px4_time(t, time_full_pos, x_full)
@@ -293,9 +292,9 @@ err_y = y_px4 - interpolate_to_px4_time(t, time_full_pos, y_full)
 err_z = z_px4 - interpolate_to_px4_time(t, time_full_pos, z_full)
 
 # Calculate signed error for velocity
-err_vx = pos_topic.data['vx'] - interpolate_to_px4_time(t, time_full_pos, vx_full)
-err_vy = pos_topic.data['vy'] - interpolate_to_px4_time(t, time_full_pos, vy_full)
-err_vz = pos_topic.data['vz'] - interpolate_to_px4_time(t, time_full_pos, vz_full)
+err_vx = vx_px4 - interpolate_to_px4_time(t, time_full_pos, vx_full)
+err_vy = vy_px4 - interpolate_to_px4_time(t, time_full_pos, vy_full)
+err_vz = vz_px4 - interpolate_to_px4_time(t, time_full_pos, vz_full)
 
 if WITH_NN:
     # Same for EKF + NN
@@ -306,39 +305,39 @@ if WITH_NN:
 
     err_roll_nn = angle_error_deg(np.degrees(roll_px4), interpolate_to_px4_time(t_att, time_nn, roll_nn))
     err_pitch_nn = angle_error_deg(np.degrees(pitch_px4), interpolate_to_px4_time(t_att, time_nn, pitch_nn))
-    err_yaw_nn = angle_error_deg(np.degrees(yaw_px4_zeroed), interpolate_to_px4_time(t_att, time_nn, yaw_nn))
+    err_yaw_nn = angle_error_deg(np.degrees(yaw_px4), interpolate_to_px4_time(t_att, time_nn, yaw_nn))
 
     err_x_nn = x_px4 - interpolate_to_px4_time(t, time_nn_pos, x_nn)
     err_y_nn = y_px4 - interpolate_to_px4_time(t, time_nn_pos, y_nn)
     err_z_nn = z_px4 - interpolate_to_px4_time(t, time_nn_pos, z_nn)
 
-    err_vx_nn = pos_topic.data['vx'] - interpolate_to_px4_time(t, time_nn_pos, vx_nn)
-    err_vy_nn = pos_topic.data['vy'] - interpolate_to_px4_time(t, time_nn_pos, vy_nn)
-    err_vz_nn = pos_topic.data['vz'] - interpolate_to_px4_time(t, time_nn_pos, vz_nn)
+    err_vx_nn = vx_px4 - interpolate_to_px4_time(t, time_nn_pos, vx_nn)
+    err_vy_nn = vy_px4 - interpolate_to_px4_time(t, time_nn_pos, vy_nn)
+    err_vz_nn = vz_px4 - interpolate_to_px4_time(t, time_nn_pos, vz_nn)
 
 
 # Plot quaternion error components
 fig_err_quat, axs_err_quat = plt.subplots(4, 1, figsize=(10, 9), sharex=True)
 axs_err_quat[0].plot(t_att, err_qw, label='EKF', color=colors['EKF Full'])
-# axs_err_quat[0].plot(t_att, err_qw_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_quat[0].plot(t_att, err_qw_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_quat[0].set_ylabel('Error (qw)')
 axs_err_quat[0].legend()
 axs_err_quat[0].grid()
 
 axs_err_quat[1].plot(t_att, err_qx, label='EKF', color=colors['EKF Full'])
-# axs_err_quat[1].plot(t_att, err_qx_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_quat[1].plot(t_att, err_qx_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_quat[1].set_ylabel('Error (qx)')
 axs_err_quat[1].legend()
 axs_err_quat[1].grid()
 
 axs_err_quat[2].plot(t_att, err_qy, label='EKF', color=colors['EKF Full'])
-# axs_err_quat[2].plot(t_att, err_qy_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_quat[2].plot(t_att, err_qy_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_quat[2].set_ylabel('Error (qy)')
 axs_err_quat[2].legend()
 axs_err_quat[2].grid()
 
 axs_err_quat[3].plot(t_att, err_qz, label='EKF', color=colors['EKF Full'])
-# axs_err_quat[3].plot(t_att, err_qz_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_quat[3].plot(t_att, err_qz_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_quat[3].set_ylabel('Error (qz)')
 axs_err_quat[3].set_xlabel('Time [s]')
 axs_err_quat[3].legend()
@@ -349,19 +348,19 @@ plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 # Plot Euler angle errors
 fig_err_euler, axs_err_euler = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
 axs_err_euler[0].plot(t_att, err_roll, label='EKF', color=colors['EKF Full'])
-# axs_err_euler[0].plot(t_att, err_roll_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_euler[0].plot(t_att, err_roll_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_euler[0].set_ylabel('Error Roll [deg]')
 axs_err_euler[0].legend()
 axs_err_euler[0].grid()
 
 axs_err_euler[1].plot(t_att, err_pitch, label='EKF', color=colors['EKF Full'])
-# axs_err_euler[1].plot(t_att, err_pitch_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_euler[1].plot(t_att, err_pitch_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_euler[1].set_ylabel('Error Pitch [deg]')
 axs_err_euler[1].legend()
 axs_err_euler[1].grid()
 
 axs_err_euler[2].plot(t_att, err_yaw, label='EKF', color=colors['EKF Full'])
-# axs_err_euler[2].plot(t_att, err_yaw_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_euler[2].plot(t_att, err_yaw_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_euler[2].set_ylabel('Error Yaw [deg]')
 axs_err_euler[2].set_xlabel('Time [s]')
 axs_err_euler[2].legend()
@@ -372,19 +371,19 @@ plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 # Plot position errors
 fig_err_pos, axs_err_pos = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
 axs_err_pos[0].plot(t, err_x, label='EKF', color=colors['EKF Full'])
-# axs_err_pos[0].plot(t, err_x_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_pos[0].plot(t, err_x_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_pos[0].set_ylabel('Error X [m]')
 axs_err_pos[0].legend()
 axs_err_pos[0].grid()
 
 axs_err_pos[1].plot(t, err_y, label='EKF', color=colors['EKF Full'])
-# axs_err_pos[1].plot(t, err_y_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_pos[1].plot(t, err_y_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_pos[1].set_ylabel('Error Y [m]')
 axs_err_pos[1].legend()
 axs_err_pos[1].grid()
 
 axs_err_pos[2].plot(t, err_z, label='EKF', color=colors['EKF Full'])
-# axs_err_pos[2].plot(t, err_z_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_pos[2].plot(t, err_z_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_pos[2].set_ylabel('Error Z [m]')
 axs_err_pos[2].set_xlabel('Time [s]')
 axs_err_pos[2].legend()
@@ -395,38 +394,25 @@ plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 # Plot velocity errors
 fig_err_vel, axs_err_vel = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
 axs_err_vel[0].plot(t, err_vx, label='EKF', color=colors['EKF Full'])
-# axs_err_vel[0].plot(t, err_vx_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_vel[0].plot(t, err_vx_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_vel[0].set_ylabel('Error Vx [m/s]')
 axs_err_vel[0].legend()
 axs_err_vel[0].grid()
 
 axs_err_vel[1].plot(t, err_vy, label='EKF', color=colors['EKF Full'])
-# axs_err_vel[1].plot(t, err_vy_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_vel[1].plot(t, err_vy_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_vel[1].set_ylabel('Error Vy [m/s]')
 axs_err_vel[1].legend()
 axs_err_vel[1].grid()
 
 axs_err_vel[2].plot(t, err_vz, label='EKF', color=colors['EKF Full'])
-# axs_err_vel[2].plot(t, err_vz_nn, label='EKF + NN', color=colors['EKF + NN'])
+if WITH_NN: axs_err_vel[2].plot(t, err_vz_nn, label='EKF + NN', color=colors['EKF + NN'])
 axs_err_vel[2].set_ylabel('Error Vz [m/s]')
 axs_err_vel[2].set_xlabel('Time [s]')
 axs_err_vel[2].legend()
 axs_err_vel[2].grid()
 fig_err_vel.suptitle('Velocity Signed Error: PX4 - EKF Full')
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-
-# for fig in [fig_quat_comp, fig_euler_comp, fig_pos, fig_err_quat, fig_err_euler, fig_err_pos, fig_err_vel]:
-#     fig.patch.set_facecolor('#222')
-#     for ax in fig.get_axes():
-#         ax.set_facecolor('#222')
-
-#         fig_quat_comp.savefig(f'plots/{filename}_fig_quat_comp.png', dpi=150)
-#         fig_euler_comp.savefig(f'plots/{filename}_fig_euler_comp.png', dpi=150)
-#         fig_pos.savefig(f'plots/{filename}_fig_pos.png', dpi=150)
-#         fig_err_quat.savefig(f'plots/{filename}_fig_err_quat.png', dpi=150)
-#         fig_err_euler.savefig(f'plots/{filename}_fig_err_euler.png', dpi=150)
-#         fig_err_pos.savefig(f'plots/{filename}_fig_err_pos.png', dpi=150)
-#         fig_err_vel.savefig(f'plots/{filename}_fig_err_vel.png', dpi=150)
 
 # --- Plot Gyro and Magnetometer Biases from EKF ---
 fig_bias, axs_bias = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
@@ -450,5 +436,7 @@ axs_bias[1].grid()
 axs_bias[1].set_title('Magnetometer Bias (EKF Full)')
 
 axs_bias[1].set_xlabel('Time [s]')
+
+# -- Show all plots ---
 plt.tight_layout()
 plt.show()
