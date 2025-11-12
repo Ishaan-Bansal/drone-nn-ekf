@@ -151,40 +151,30 @@ def run_test(filename, with_nn=False):
 
     # ---- Scenario 1: Full Predict + Update ----
     for curr_time in time_steps:
-        # Prediction steps
-        for _ in range(PRED_STEPS_PER_UPDATE):
-            curr_time += PRED_DT
-            orientation_full.predict()
-            position_full.update_orientation(orientation_full.current_state[:4])
-            position_full.predict()
-            # orientation_full.update_ekf_history(time=curr_time)
-            # position_full.update_ekf_history(time=curr_time)
-
+        # Input sensor readings into EKFs
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
         gyro_filtered = sensor_combined_gyro.get_data(curr_time)
         magnetometer_filtered = sensor_mag.get_data(curr_time)
         baro_pressure_filtered = sensor_baro.get_data(curr_time)
-
-        # Update Orientation EKF
-        orientation_full.set_observation(
-            np.array([
-                accelerometer_filtered[0],
-                accelerometer_filtered[1],
-                accelerometer_filtered[2],
-                magnetometer_filtered[0],
-                magnetometer_filtered[1],
-                magnetometer_filtered[2],
-            ]),
+    
+        orientation_full.set_observation_and_input(
+            np.concatenate([accelerometer_filtered, magnetometer_filtered]),
             gyro_filtered
         )
+        position_full.set_observation_and_input(
+            baro_pressure_filtered,
+            accelerometer_filtered,
+        )
+        # Prediction steps
+        orientation_full.predict()
+        position_full.update_orientation(orientation_full.current_state[:4])
+        position_full.predict()
+
+        # Update Orientation EKF
         orientation_full.update()
         orientation_full.update_ekf_history(time=curr_time)
 
         # Update Position EKF
-        position_full.set_observation(
-            baro_pressure_filtered,
-            accelerometer_filtered,
-        )
         position_full.update_orientation(orientation_full.current_state[:4])
         position_full.update()
         position_full.update_ekf_history(time=curr_time)
