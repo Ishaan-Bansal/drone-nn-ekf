@@ -88,7 +88,7 @@ class Extended_Kalman_Filter():
         )
         return kalman_gain_K        
 
-    def set_observation(self, new_observation, new_input) -> None:
+    def set_observation_and_input(self, new_observation, new_input) -> None:
         self.current_observation = new_observation
         self.current_input = new_input
 
@@ -201,24 +201,24 @@ class Orientation_EKF(Extended_Kalman_Filter):
             "magnetometer (z)": [magnetometer_reading[2]]   
         }
         process_noise_covariance_Q = np.diag([
-            1.0e-2, # qw
-            1.0e-2, # qx
-            1.0e-2, # qy
-            1.0e-2, # qz
-            1.0e1, # gyro bias (x)
-            1.0e1, # gyro bias (y)
-            1.0e1, # gyro bias (z)
-            1.0e1, # magnetometer bias (x)
-            1.0e1, # magnetometer bias (y)
-            1.0e1, # magnetometer bias (z)
+            1.0e-8, # qw
+            1.0e-8, # qx
+            1.0e-8, # qy
+            1.0e-8, # qz
+            1.0e-8, # gyro bias (x)
+            1.0e-8, # gyro bias (y)
+            1.0e-8, # gyro bias (z)
+            1.0e-8, # magnetometer bias (x)
+            1.0e-8, # magnetometer bias (y)
+            1.0e-8, # magnetometer bias (z)
         ])
         measurement_noise_covariance_R = np.diag([
-            1.0e-1, # accelerometer (x)
-            1.0e-1, # accelerometer (y)
-            1.0e-1, # accelerometer (z)
-            1.0e-1, # magnetometer (x)
-            1.0e-1, # magnetometer (y)
-            1.0e-1, # magnetometer (z)
+            5.0e5, # accelerometer (x)
+            5.0e5, # accelerometer (y)
+            5.0e5, # accelerometer (z)
+            5.0e5, # magnetometer (x)
+            5.0e5, # magnetometer (y)
+            5.0e5, # magnetometer (z)
         ])
         super().__init__(
             state_dict, input_dict, observation_dict, 
