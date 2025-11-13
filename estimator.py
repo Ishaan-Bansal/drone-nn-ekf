@@ -49,6 +49,10 @@ class Extended_Kalman_Filter():
             self.observation_equilibrium = np.zeros_like(self.current_observation)
         
         self.filter = LowPassFilter(lpf_alpha) if lpf_alpha is not None else None
+        
+        # Initialize tracking dictionaries for diagonal elements
+        self.estimation_covariance_diag_history = {k: [] for k in state_dict.keys()}
+        self.innovation_covariance_diag_history = {k: [] for k in observation_dict.keys()}
 
     @abstractmethod
     def get_state_transition_matrix_A(self) -> np.ndarray:
@@ -81,10 +85,12 @@ class Extended_Kalman_Filter():
 
     def get_kalman_gain_K(self) -> np.ndarray:
         current_observation_matrix_H = self.get_observation_matrix_H()
+        innovation_covariance = (
+            current_observation_matrix_H @ self.estimation_covariance_P @ current_observation_matrix_H.T + 
+            self.measurement_noise_covariance_R
+        )
         kalman_gain_K = (
-            self.estimation_covariance_P @ current_observation_matrix_H.T @ np.linalg.inv(
-                current_observation_matrix_H @ self.estimation_covariance_P @ current_observation_matrix_H.T + self.measurement_noise_covariance_R
-            )
+            self.estimation_covariance_P @ current_observation_matrix_H.T @ np.linalg.inv(innovation_covariance)
         )
         return kalman_gain_K        
 
@@ -117,6 +123,21 @@ class Extended_Kalman_Filter():
         else:
             # For missing time info, append None or a placeholder
             self.state_history["time"].append(None)
+        
+        # Log diagonal of estimation covariance P
+        state_keys = [k for k in self.state_history.keys() if k != "time"]
+        for idx, key in enumerate(state_keys):
+            self.estimation_covariance_diag_history[key].append(self.estimation_covariance_P[idx, idx])
+        
+        # Log diagonal of innovation covariance S
+        current_observation_matrix_H = self.get_observation_matrix_H()
+        innovation_covariance = (
+            current_observation_matrix_H @ self.estimation_covariance_P @ current_observation_matrix_H.T + 
+            self.measurement_noise_covariance_R
+        )
+        obs_keys = list(self.observation_history.keys())
+        for idx, key in enumerate(obs_keys):
+            self.innovation_covariance_diag_history[key].append(innovation_covariance[idx, idx])
 
     def export(self, path_prefix="ekf_output") -> None:
         def dict_to_csv(dictionary, filename):
@@ -130,6 +151,8 @@ class Extended_Kalman_Filter():
         dict_to_csv(self.state_history, f"{path_prefix}_states.csv")
         dict_to_csv(self.input_history, f"{path_prefix}_inputs.csv")
         dict_to_csv(self.observation_history, f"{path_prefix}_observations.csv")
+        dict_to_csv(self.estimation_covariance_diag_history, f"{path_prefix}_estimation_covariance_diag.csv")
+        dict_to_csv(self.innovation_covariance_diag_history, f"{path_prefix}_innovation_covariance_diag.csv")
 
     def check_covariance_matrix_P(self) -> None:
         """Check if the covariance matrix P is symmetric and positive semi-definite."""

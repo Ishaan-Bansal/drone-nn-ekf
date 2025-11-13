@@ -437,6 +437,108 @@ axs_bias[1].set_title('Magnetometer Bias (EKF Full)')
 
 axs_bias[1].set_xlabel('Time [s]')
 
+# --- Load covariance data ---
+est_cov_full = pd.read_csv(f'./EKF_data/{filename}_orientation_ekf_full_estimation_covariance_diag.csv')
+inn_cov_full = pd.read_csv(f'./EKF_data/{filename}_orientation_ekf_full_innovation_covariance_diag.csv')
+
+est_cov_pos_full = pd.read_csv(f'./EKF_data/{filename}_position_ekf_full_estimation_covariance_diag.csv')
+inn_cov_pos_full = pd.read_csv(f'./EKF_data/{filename}_position_ekf_full_innovation_covariance_diag.csv')
+
+if WITH_NN:
+    est_cov_full_nn = pd.read_csv(f'./EKF_data/{filename}_orientation_ekf_full_nn_estimation_covariance_diag.csv')
+    inn_cov_full_nn = pd.read_csv(f'./EKF_data/{filename}_orientation_ekf_full_nn_innovation_covariance_diag.csv')
+    est_cov_pos_full_nn = pd.read_csv(f'./EKF_data/{filename}_position_ekf_full_nn_estimation_covariance_diag.csv')
+    inn_cov_pos_full_nn = pd.read_csv(f'./EKF_data/{filename}_position_ekf_full_nn_innovation_covariance_diag.csv')
+
+# --- Plot Orientation Estimation Covariance ---
+fig_est_cov_orient, axs_est = plt.subplots(2, 2, figsize=(12, 8))
+axs_est = axs_est.flatten()
+
+quat_keys = ['quaternion (w)', 'quaternion (x)', 'quaternion (y)', 'quaternion (z)']
+for idx, key in enumerate(quat_keys):
+    axs_est[idx].plot(time_full, est_cov_full[key], label='EKF Full', color=colors['EKF Full'])
+    if WITH_NN:
+        axs_est[idx].plot(time_nn, est_cov_full_nn[key], label='EKF + NN', color=colors['EKF + NN'])
+    axs_est[idx].set_ylabel(f'P diag [{key}]')
+    axs_est[idx].set_xlabel('Time [s]')
+    axs_est[idx].grid()
+    axs_est[idx].legend()
+    axs_est[idx].set_yscale('log')
+
+fig_est_cov_orient.suptitle('Orientation Estimation Covariance (Quaternion States)')
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+# --- Plot Orientation Bias Estimation Covariance ---
+fig_est_cov_bias, axs_est_bias = plt.subplots(2, 3, figsize=(14, 8))
+axs_est_bias = axs_est_bias.flatten()
+
+bias_keys = ['gyroscope bias (x)', 'gyroscope bias (y)', 'gyroscope bias (z)',
+             'magnetometer bias (x)', 'magnetometer bias (y)', 'magnetometer bias (z)']
+for idx, key in enumerate(bias_keys):
+    axs_est_bias[idx].plot(time_full, est_cov_full[key], label='EKF Full', color=colors['EKF Full'])
+    if WITH_NN:
+        axs_est_bias[idx].plot(time_nn, est_cov_full_nn[key], label='EKF + NN', color=colors['EKF + NN'])
+    axs_est_bias[idx].set_ylabel(f'P diag [{key}]')
+    axs_est_bias[idx].set_xlabel('Time [s]')
+    axs_est_bias[idx].grid()
+    axs_est_bias[idx].legend()
+    axs_est_bias[idx].set_yscale('log')
+
+fig_est_cov_bias.suptitle('Orientation Estimation Covariance (Bias States)')
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+# --- Plot Orientation Innovation Covariance ---
+fig_inn_cov_orient, axs_inn = plt.subplots(2, 3, figsize=(14, 8))
+axs_inn = axs_inn.flatten()
+
+meas_keys = ['accelerometer (x)', 'accelerometer (y)', 'accelerometer (z)',
+             'magnetometer (x)', 'magnetometer (y)', 'magnetometer (z)']
+for idx, key in enumerate(meas_keys):
+    axs_inn[idx].plot(time_full, inn_cov_full[key], label='EKF Full', color=colors['EKF Full'])
+    if WITH_NN:
+        axs_inn[idx].plot(time_nn, inn_cov_full_nn[key], label='EKF + NN', color=colors['EKF + NN'])
+    axs_inn[idx].set_ylabel(f'S diag [{key}]')
+    axs_inn[idx].set_xlabel('Time [s]')
+    axs_inn[idx].grid()
+    axs_inn[idx].legend()
+    axs_inn[idx].set_yscale('log')
+
+fig_inn_cov_orient.suptitle('Orientation Innovation Covariance (Measurements)')
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+# --- Plot Position Estimation Covariance ---
+fig_est_cov_pos, axs_est_pos = plt.subplots(2, 3, figsize=(14, 8))
+axs_est_pos = axs_est_pos.flatten()
+
+pos_state_keys = ['position (x) [m]', 'position (y) [m]', 'position (z) [m]',
+                  'velocity (x) [m/s]', 'velocity (y) [m/s]', 'velocity (z) [m/s]']
+for idx, key in enumerate(pos_state_keys):
+    axs_est_pos[idx].plot(time_full_pos, est_cov_pos_full[key], label='EKF Full', color=colors['EKF Full'])
+    if WITH_NN:
+        axs_est_pos[idx].plot(time_nn_pos, est_cov_pos_full_nn[key], label='EKF + NN', color=colors['EKF + NN'])
+    axs_est_pos[idx].set_ylabel(f'P diag [{key}]')
+    axs_est_pos[idx].set_xlabel('Time [s]')
+    axs_est_pos[idx].grid()
+    axs_est_pos[idx].legend()
+    axs_est_pos[idx].set_yscale('log')
+
+fig_est_cov_pos.suptitle('Position Estimation Covariance (States)')
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+# --- Plot Position Innovation Covariance ---
+fig_inn_cov_pos, ax_inn_pos = plt.subplots(figsize=(10, 6))
+ax_inn_pos.plot(time_full_pos, inn_cov_pos_full['barometer pressure [Pa]'], 
+                label='EKF Full', color=colors['EKF Full'], linewidth=2)
+if WITH_NN:
+    ax_inn_pos.plot(time_nn_pos, inn_cov_pos_full_nn['barometer pressure [Pa]'], 
+                    label='EKF + NN', color=colors['EKF + NN'], linewidth=2)
+ax_inn_pos.set_ylabel('S diag [barometer pressure]')
+ax_inn_pos.set_xlabel('Time [s]')
+ax_inn_pos.grid()
+ax_inn_pos.legend()
+ax_inn_pos.set_yscale('log')
+ax_inn_pos.set_title('Position Innovation Covariance (Barometer Measurement)')
+
 # -- Show all plots ---
 plt.tight_layout()
 plt.show()
