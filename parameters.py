@@ -41,7 +41,7 @@ ORIENTATION_LPF_ALPHA = np.array([
 
 POSITION_LPF_ALPHA = np.array([
     1, 1, 1, # Position (3)
-    0.01, 0.01, 0.005, # Velocity (3)
+    0.1, 0.1, 0.5, # Velocity (3)
 ])
 
 # EKF Testing Parameters
