@@ -1,21 +1,15 @@
 # ---- Imports ----
 import csv
 import numpy as np
-from signal_filters import LowPassFilter
 from typing import Callable, Any
 from abc import ABC, abstractmethod
-from parameters import (
-    GRAVITATION_ACCELERATION_ms2, PRESSURE_SEA_LEVEL_Pa, ROOM_TEMPERATURE_K,
-    UNIVERSAL_GAS_CONSTANT_JmolK, AIR_MOLAR_MASS_kgmol,
-    ORIENTATION_LPF_ALPHA, POSITION_LPF_ALPHA,
-)
+from parameters import GRAVITATION_ACCELERATION_ms2, PRESSURE_SEA_LEVEL_Pa, ROOM_TEMPERATURE_K, UNIVERSAL_GAS_CONSTANT_JmolK, AIR_MOLAR_MASS_kgmol
 
 class Extended_Kalman_Filter():
     def __init__(
             self, state_dict: dict, input_dict: dict, observation_dict: dict,
             process_noise_covariance_Q: np.ndarray, measurement_noise_covariance_R: np.ndarray,
             state_equilibrium=None, input_equilibrium=None, observation_equilibrium=None,
-            lpf_alpha=None,
         ):
         self.state_history = {k: v.copy() for k, v in state_dict.items()}
         self.state_history["time"] = []
@@ -47,8 +41,6 @@ class Extended_Kalman_Filter():
             self.observation_equilibrium = observation_equilibrium
         else:
             self.observation_equilibrium = np.zeros_like(self.current_observation)
-        
-        self.filter = LowPassFilter(lpf_alpha) if lpf_alpha is not None else None
 
     @abstractmethod
     def get_state_transition_matrix_A(self) -> np.ndarray:
@@ -100,7 +92,6 @@ class Extended_Kalman_Filter():
             self.current_state + 
             kalman_gain_K @ ((self.current_observation - self.observation_equilibrium) - current_observation_matrix_H @ self.current_state)
         )
-        self.run_low_pass_filter()
         self.update_estimation_covariance()
 
     def update_ekf_history(self, time=None) -> None:
@@ -144,14 +135,10 @@ class Extended_Kalman_Filter():
         if np.any(eigvals < -1e-10):  # Allow tiny negative values from round-off
             print(f"Warning: Covariance matrix P lost PSD, negative eigenvalues: {eigvals[eigvals < 0]}")
     
-    def update_state(self, new_state) -> None:
+    def update_state(self, new_state):
         if len(new_state) == self.num_states:
             for idx, state in enumerate(new_state):
                 self.current_state[idx] = state
-    
-    def run_low_pass_filter(self) -> None:
-        if self.filter is not None:
-            self.current_state = self.filter.update(self.current_state)
 
 class Orientation_EKF(Extended_Kalman_Filter):
     def __init__(
@@ -225,8 +212,7 @@ class Orientation_EKF(Extended_Kalman_Filter):
             state_dict, input_dict, observation_dict, 
             process_noise_covariance_Q, measurement_noise_covariance_R,
             state_equilibrium, input_equilibrium, observation_equilibrium,
-            lpf_alpha=ORIENTATION_LPF_ALPHA
-        )
+            )
 
     def get_state_transition_matrix_A(self) -> np.ndarray:
         dt = self.PREDICTION_TIMESTEP_s
@@ -373,8 +359,7 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             state_dict, input_dict, observation_dict, 
             process_noise_covariance_Q, measurement_noise_covariance_R,
             state_equilibrium, input_equilibrium, observation_equilibrium,
-            lpf_alpha=POSITION_LPF_ALPHA,
-        )
+            )
 
     def update_orientation(self, orientation: np.ndarray) -> None:
         self.orientation_state = orientation
