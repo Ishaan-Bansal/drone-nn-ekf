@@ -439,32 +439,27 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
         dt = self.PREDICTION_TIMESTEP
         g = self.GRAVITATION_ACCELERATION_ms2
 
-        p_x_next = (
-            dt**2*(0.5*a_x*(-2*q_y**2 - 2*q_z**2 + 1) + 
-                   0.5*a_y*(-2*q_w*q_z + 2*q_x*q_y) + 0.5*a_z*(2*q_w*q_y + 2*q_x*q_z)) + 
-                   dt*v_x + p_x
-        )
-        p_y_next = (
-            dt**2*(0.5*(a_x)*(2*q_w*q_z + 2*q_x*q_y) + 
-                   0.5*(a_y)*(-2*q_x**2 - 2*q_z**2 + 1) + 0.5*(a_z)*(-2*q_w*q_x + 2*q_y*q_z)) + dt*v_y + p_y
-        )
-        p_z_next = (
-            dt**2*(0.5*g + 0.5*(a_x)*(-2*q_w*q_y + 2*q_x*q_z) + 
-                   0.5*(a_y)*(2*q_w*q_x + 2*q_y*q_z) + 0.5*(a_z)*(-2*q_x**2 - 2*q_y**2 + 1)) + dt*v_z + p_z
-        ) 
-        v_x_next = (
-            dt*((a_x)*(-2*q_y**2 - 2*q_z**2 + 1) + 
-                (a_y)*(-2*q_w*q_z + 2*q_x*q_y) + (a_z)*(2*q_w*q_y + 2*q_x*q_z)) + v_x
-        )
-        v_y_next = (
-            dt*((a_x)*(2*q_w*q_z + 2*q_x*q_y) + 
-                (a_y)*(-2*q_x**2 - 2*q_z**2 + 1) + (a_z)*(-2*q_w*q_x + 2*q_y*q_z)) + v_y
-        )
-        v_z_next = (
-            dt*(g + (a_x)*(-2*q_w*q_y + 2*q_x*q_z) + 
-                (a_y)*(2*q_w*q_x + 2*q_y*q_z) + (a_z)*(-2*q_x**2 - 2*q_y**2 + 1)) + v_z
-        )
+        state = np.array([p_x, p_y, p_z, v_x, v_y, v_z])
 
-        self.current_state = np.array([p_x_next, p_y_next, p_z_next, v_x_next, v_y_next, v_z_next])
+        def state_derivative(s):
+            """Compute state derivative: [v_x, v_y, v_z, a_x_ned, a_y_ned, a_z_ned]"""
+            px, py, pz, vx, vy, vz = s
+            
+            # Rotate acceleration from body frame to NED frame
+            a_x_ned = a_x*(-2*q_y**2 - 2*q_z**2 + 1) + a_y*(-2*q_w*q_z + 2*q_x*q_y) + a_z*(2*q_w*q_y + 2*q_x*q_z)
+            a_y_ned = a_x*(2*q_w*q_z + 2*q_x*q_y) + a_y*(-2*q_x**2 - 2*q_z**2 + 1) + a_z*(-2*q_w*q_x + 2*q_y*q_z)
+            a_z_ned = g + a_x*(-2*q_w*q_y + 2*q_x*q_z) + a_y*(2*q_w*q_x + 2*q_y*q_z) + a_z*(-2*q_x**2 - 2*q_y**2 + 1)
+            
+            return np.array([vx, vy, vz, a_x_ned, a_y_ned, a_z_ned])
+
+        # RK4 Integration
+        k1 = state_derivative(state)
+        k2 = state_derivative(state + 0.5*dt*k1)
+        k3 = state_derivative(state + 0.5*dt*k2)
+        k4 = state_derivative(state + dt*k3)
+
+        state_next = state + (dt/6.0) * (k1 + 2*k2 + 2*k3 + k4)
+
+        self.current_state = state_next
         self.predict_estimation_covariance()
 
