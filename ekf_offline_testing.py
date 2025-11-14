@@ -4,7 +4,7 @@ import torch
 import copy
 from scipy.spatial.transform import Rotation as R
 from estimator import Orientation_EKF, Position_Velocity_EKF
-from sensors import Sensor
+from sensors import Sensor_1D, Sensor_3D, Sensor
 from neural_net import Residual_Estimator
 from parameters import (
     TRAINING_FILES, TEST_FILES,
