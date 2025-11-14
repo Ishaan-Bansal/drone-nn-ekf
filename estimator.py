@@ -72,7 +72,7 @@ class Extended_Kalman_Filter():
             K @ R @ K.T
         )
 
-    def get_kalman_gain_K(self) -> np.ndarray:
+    def get_kalman_gain_K(self, timestep=None) -> np.ndarray:
         current_observation_matrix_H = self.get_observation_matrix_H()
         kalman_gain_K = (
             self.estimation_covariance_P @ current_observation_matrix_H.T @ np.linalg.inv(
