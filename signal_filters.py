@@ -93,52 +93,6 @@ class LowPassFilter_3D:
     def reset(self):
         self.initialized = False
 
-class LowPassFilter:
-    def __init__(self, alpha, initial_array=None):
-        """
-        Simple exponential moving average (EMA) low-pass filter.
-
-        Parameters:
-        alpha : dimension x np.ndarray(float)
-            Smoothing factor, between 0 and 1. Smaller means more smoothing.
-
-        initial_array : dimension x float or np.ndarray, optional
-            Initial filtered value.
-            raise ValueError("Alpha must be in (0, 1] for all dimensions.")
-        """
-        
-        self.alpha = alpha
-        self.filtered_array = (
-            np.array(initial_array, dtype=float) if initial_array is not None
-            else np.zeros_like(alpha, dtype=float)
-        )
-        self.initialized = False
-
-    def update(self, new_array):
-        """
-        Process one new data point and return the filtered result.
-        
-        Parameters:
-        new_array : dimension x np.ndarray
-            The new incoming sample.
-
-        Returns:
-        float : The updated filtered value.
-        """
-        if not self.initialized:
-            # First datapoint initializes the filter
-            self.filtered_array = new_array
-            self.initialized = True
-        else:
-            self.filtered_array = (
-                self.alpha * new_array +
-                (1 - self.alpha) * self.filtered_array
-            )
-        return self.filtered_array
-    
-    def reset(self):
-        self.initialized = False
-
 class ZScoreFilter_1D:
     def __init__(self, threshold=3.0):
         self.threshold = threshold

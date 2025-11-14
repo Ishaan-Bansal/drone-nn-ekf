@@ -4,7 +4,8 @@ import torch
 import copy
 from scipy.spatial.transform import Rotation as R
 from estimator import Orientation_EKF, Position_Velocity_EKF
-from sensors import Sensor_1D, Sensor_3D, Sensor
+from signal_filters import LowPassFilter_1D, LowPassFilter_3D
+from sensors import Sensor_1D, Sensor_3D
 from neural_net import Residual_Estimator
 from parameters import (
     TRAINING_FILES, TEST_FILES,
@@ -143,21 +144,18 @@ def run_test(filename, with_nn=False):
     timestamps_baro = baro_msgs.data['timestamp'] * 1e-6
 
     # ---- Sensor Instances ----
-    sensor_mag = Sensor('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=np.ones(3)*MAG_LPF_ALPHA)
-    sensor_combined_accel = Sensor(
+    sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
+    sensor_combined_accel = Sensor_3D(
         'accelerometer', sensor_combined_msgs,
         ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-        alpha=np.array([ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z])
+        alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
     )
-    sensor_combined_gyro = Sensor(
+    sensor_combined_gyro = Sensor_3D(
         'gyroscope', sensor_combined_msgs,
         ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
-        alpha=np.ones(3)*GYRO_LPF_ALPHA
+        alpha=GYRO_LPF_ALPHA
     )
-    sensor_baro = Sensor(
-        'barometer', baro_msgs, ['pressure'],
-        alpha=np.ones(1)*BARO_LPF_ALPHA, enable_extrapolation=False
-    )
+    sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
 
     # ---- PX4 Estimator Attitude ----
     att_topic = next(x for x in ulog.data_list if x.name == 'vehicle_attitude')
@@ -253,15 +251,15 @@ def run_test(filename, with_nn=False):
                 magnetometer_filtered[1],
                 magnetometer_filtered[2],
             ]),
-            gyro_filtered
+            np.array(gyro_filtered)
         )
         orientation_full.update()
         orientation_full.update_ekf_history(time=curr_time)
 
         # Update Position EKF
         position_full.set_observation(
-            baro_pressure_filtered,
-            accelerometer_filtered,
+            np.array([baro_pressure_filtered]),
+            np.array(accelerometer_filtered),
         )
         position_full.update_orientation(orientation_full.current_state[:4])
         position_full.update()
@@ -272,21 +270,18 @@ def run_test(filename, with_nn=False):
 
     # ---- Scenario 2: Predict  ----
     # Sensor Restart
-    sensor_mag = Sensor('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=np.ones(3)*MAG_LPF_ALPHA)
-    sensor_combined_accel = Sensor(
+    sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
+    sensor_combined_accel = Sensor_3D(
         'accelerometer', sensor_combined_msgs,
         ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-        alpha=np.array([ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z])
+        alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
     )
-    sensor_combined_gyro = Sensor(
+    sensor_combined_gyro = Sensor_3D(
         'gyroscope', sensor_combined_msgs,
         ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
-        alpha=np.ones(3)*GYRO_LPF_ALPHA
+        alpha=GYRO_LPF_ALPHA
     )
-    sensor_baro = Sensor(
-        'barometer', baro_msgs, ['pressure'],
-        alpha=np.ones(1)*BARO_LPF_ALPHA, enable_extrapolation=False
-    )
+    sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
 
     start_time = max(
         timestamps_mag[0],
@@ -310,21 +305,18 @@ def run_test(filename, with_nn=False):
 
     # ---- Scenario 3: Update Only ----
     # Sensor Restart
-    sensor_mag = Sensor('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=np.ones(3)*MAG_LPF_ALPHA)
-    sensor_combined_accel = Sensor(
+    sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
+    sensor_combined_accel = Sensor_3D(
         'accelerometer', sensor_combined_msgs,
         ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-        alpha=np.array([ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z])
+        alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
     )
-    sensor_combined_gyro = Sensor(
+    sensor_combined_gyro = Sensor_3D(
         'gyroscope', sensor_combined_msgs,
         ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
-        alpha=np.ones(3)*GYRO_LPF_ALPHA
+        alpha=GYRO_LPF_ALPHA
     )
-    sensor_baro = Sensor(
-        'barometer', baro_msgs, ['pressure'],
-        alpha=np.ones(1)*BARO_LPF_ALPHA, enable_extrapolation=False
-    )
+    sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
 
     for curr_time in time_steps:
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
@@ -342,7 +334,7 @@ def run_test(filename, with_nn=False):
 
         # Position EKF Update — manual
         pz = (
-            np.log(baro_pressure_filtered[0] / position_upd.PRESSURE_SEA_LEVEL_Pa) *
+            np.log(baro_pressure_filtered / position_upd.PRESSURE_SEA_LEVEL_Pa) *
             position_upd.ROOM_TEMPERATURE_K *
             position_upd.UNIVERSAL_GAS_CONSTANT_JmolK / (
                 position_upd.AIR_MOLAR_MASS_kgmol *
@@ -355,21 +347,18 @@ def run_test(filename, with_nn=False):
     # ---- Scenario 4: Full EKF + NN ----
     if with_nn:
         # Sensor Restart
-        sensor_mag = Sensor('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=np.ones(3)*MAG_LPF_ALPHA)
-        sensor_combined_accel = Sensor(
+        sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
+        sensor_combined_accel = Sensor_3D(
             'accelerometer', sensor_combined_msgs,
             ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-            alpha=np.array([ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z])
+            alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
         )
-        sensor_combined_gyro = Sensor(
+        sensor_combined_gyro = Sensor_3D(
             'gyroscope', sensor_combined_msgs,
             ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
-            alpha=np.ones(3)*GYRO_LPF_ALPHA
+            alpha=GYRO_LPF_ALPHA
         )
-        sensor_baro = Sensor(
-            'barometer', baro_msgs, ['pressure'],
-            alpha=np.ones(1)*BARO_LPF_ALPHA, enable_extrapolation=False
-        )
+        sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
 
         # Load Neural Net model
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -421,7 +410,7 @@ def run_test(filename, with_nn=False):
                 ekf_state,
                 accelerometer_filtered,
                 gyro_filtered,
-                baro_pressure_filtered,
+                [baro_pressure_filtered],
                 magnetometer_filtered
             ))
 
@@ -451,15 +440,15 @@ def run_test(filename, with_nn=False):
                     accelerometer_filtered[2],
                     magnetometer_filtered[0], magnetometer_filtered[1], magnetometer_filtered[2],
                 ]),
-                gyro_filtered
+                np.array(gyro_filtered)
             )
             orientation_full_nn.update()
             orientation_full_nn.update_ekf_history(time=curr_time)
 
             # Update Position EKF only when new barometer data is available
             position_full_nn.set_observation(
-                baro_pressure_filtered,
-                accelerometer_filtered,
+                np.array([baro_pressure_filtered]),
+                np.array(accelerometer_filtered),
             )
             position_full_nn.update_orientation(orientation_full_nn.current_state[:4])
             position_full_nn.update()
