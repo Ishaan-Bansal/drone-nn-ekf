@@ -1,3 +1,5 @@
+import numpy as np
+
 GRAVITATION_ACCELERATION_ms2 = 9.81 # Acceleration due to gravity [m/s^2]
 
 # --- Atmospheric Parameters (for baro) ---
@@ -9,7 +11,9 @@ AIR_MOLAR_MASS_kgmol = 0.0289644 # Molar mass of dry air [kg/mol]
 
 # --- Neural Net Parameters ---
 TRAINING_FILES = [
-    "log_0_2025-8-15-20-14-26", # "log_2_2025-8-15-12-31-04", "log_0_2025-8-15-13-19-30", 
+    "log_0_2025-8-15-20-14-26", 
+    # "log_2_2025-8-15-12-31-04", 
+    # "log_0_2025-8-15-13-19-30", 
 ]
 TEST_FILES = [
 ]
@@ -26,5 +30,19 @@ ACCEL_LPF_ALPHA_Y = 0.01
 ACCEL_LPF_ALPHA_Z = 0.1
 MAG_LPF_ALPHA = 0.1
 GYRO_LPF_ALPHA = 0.1
-BARO_LPF_ALPHA = 1.0
-VEL_Z_LPF_ALPHA = 0.1
+BARO_LPF_ALPHA = 0.4
+
+# EKF Low Pass Filter 
+ORIENTATION_LPF_ALPHA = np.array([
+    1, 1, 1, 1, # Quaternion (4)
+    0.1, 0.1, 0.1,  # Gyro bias (3)
+    0.1, 0.1, 0.1,  # Mag bias (3)
+])
+
+POSITION_LPF_ALPHA = np.array([
+    1, 1, 1, # Position (3)
+    0.1, 0.1, 0.5, # Velocity (3)
+])
+
+# EKF Testing Parameters
+INIT_TIME = 7.0 # seconds

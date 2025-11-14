@@ -1,16 +1,21 @@
 # ---- Imports ----
-import control
 import csv
 import numpy as np
+from signal_filters import LowPassFilter
 from typing import Callable, Any
 from abc import ABC, abstractmethod
-from parameters import GRAVITATION_ACCELERATION_ms2, PRESSURE_SEA_LEVEL_Pa, ROOM_TEMPERATURE_K, UNIVERSAL_GAS_CONSTANT_JmolK, AIR_MOLAR_MASS_kgmol
+from parameters import (
+    GRAVITATION_ACCELERATION_ms2, PRESSURE_SEA_LEVEL_Pa, ROOM_TEMPERATURE_K,
+    UNIVERSAL_GAS_CONSTANT_JmolK, AIR_MOLAR_MASS_kgmol,
+    ORIENTATION_LPF_ALPHA, POSITION_LPF_ALPHA,
+)
 
 class Extended_Kalman_Filter():
     def __init__(
             self, state_dict: dict, input_dict: dict, observation_dict: dict,
             process_noise_covariance_Q: np.ndarray, measurement_noise_covariance_R: np.ndarray,
             state_equilibrium=None, input_equilibrium=None, observation_equilibrium=None,
+            lpf_alpha=None,
         ):
         self.state_history = {k: v.copy() for k, v in state_dict.items()}
         self.state_history["time"] = []
@@ -42,18 +47,28 @@ class Extended_Kalman_Filter():
             self.observation_equilibrium = observation_equilibrium
         else:
             self.observation_equilibrium = np.zeros_like(self.current_observation)
+        
+        self.filter = LowPassFilter(lpf_alpha) if lpf_alpha is not None else None
+        
+        # Initialize tracking dictionaries for diagonal elements
+        self.estimation_covariance_diag_history = {k: [] for k in state_dict.keys()}
+        self.innovation_covariance_diag_history = {k: [] for k in observation_dict.keys()}
 
     @abstractmethod
     def get_state_transition_matrix_A(self) -> np.ndarray:
         pass
 
     @abstractmethod
-    def get_observation_matrix_H(self) -> np.ndarray:
+    def predict(self) -> None:
         pass
 
     @abstractmethod
-    def predict(self) -> None:
+    def observation_model(self, state) -> np.ndarray:
         pass
+
+    def get_observation_matrix_H(self) -> np.ndarray:
+        H = self.numerical_jacobian(self.observation_model, self.current_state)
+        return H
 
     def predict_estimation_covariance(self) -> None:
         state_transition_matrix = self.get_state_transition_matrix_A()
@@ -72,27 +87,32 @@ class Extended_Kalman_Filter():
             K @ R @ K.T
         )
 
-    def get_kalman_gain_K(self, timestep=None) -> np.ndarray:
+    def get_kalman_gain_K(self) -> np.ndarray:
         current_observation_matrix_H = self.get_observation_matrix_H()
+        innovation_covariance = (
+            current_observation_matrix_H @ self.estimation_covariance_P @ current_observation_matrix_H.T + 
+            self.measurement_noise_covariance_R
+        )
         kalman_gain_K = (
-            self.estimation_covariance_P @ current_observation_matrix_H.T @ np.linalg.inv(
-                current_observation_matrix_H @ self.estimation_covariance_P @ current_observation_matrix_H.T + self.measurement_noise_covariance_R
-            )
+            self.estimation_covariance_P @ current_observation_matrix_H.T @ np.linalg.inv(innovation_covariance)
         )
         return kalman_gain_K        
 
-    def set_observation(self, new_observation, new_input) -> None:
+    def set_observation_and_input(self, new_observation, new_input) -> None:
         self.current_observation = new_observation
         self.current_input = new_input
 
-    def update(self, timestep : float = None) -> None:
+    def update(self) -> None:
         self.check_covariance_matrix_P()
         current_observation_matrix_H = self.get_observation_matrix_H()
-        kalman_gain_K = self.get_kalman_gain_K(timestep)
+        kalman_gain_K = self.get_kalman_gain_K()
         self.current_state = (
             self.current_state + 
-            kalman_gain_K @ ((self.current_observation - self.observation_equilibrium) - current_observation_matrix_H @ self.current_state)
+            kalman_gain_K @ (
+                self.current_observation - self.observation_model(self.current_state)
+            )
         )
+        self.run_low_pass_filter()
         self.update_estimation_covariance()
 
     def update_ekf_history(self, time=None) -> None:
@@ -107,8 +127,22 @@ class Extended_Kalman_Filter():
         if time is not None:
             self.state_history["time"].append(time)
         else:
-            # For missing time info, append None or a placeholder
             self.state_history["time"].append(None)
+        
+        # Log diagonal of estimation covariance P
+        state_keys = [k for k in self.state_history.keys() if k != "time"]
+        for idx, key in enumerate(state_keys):
+            self.estimation_covariance_diag_history[key].append(self.estimation_covariance_P[idx, idx])
+        
+        # Log diagonal of innovation covariance S
+        current_observation_matrix_H = self.get_observation_matrix_H()
+        innovation_covariance = (
+            current_observation_matrix_H @ self.estimation_covariance_P @ current_observation_matrix_H.T + 
+            self.measurement_noise_covariance_R
+        )
+        obs_keys = list(self.observation_history.keys())
+        for idx, key in enumerate(obs_keys):
+            self.innovation_covariance_diag_history[key].append(innovation_covariance[idx, idx])
 
     def export(self, path_prefix="ekf_output") -> None:
         def dict_to_csv(dictionary, filename):
@@ -122,6 +156,8 @@ class Extended_Kalman_Filter():
         dict_to_csv(self.state_history, f"{path_prefix}_states.csv")
         dict_to_csv(self.input_history, f"{path_prefix}_inputs.csv")
         dict_to_csv(self.observation_history, f"{path_prefix}_observations.csv")
+        dict_to_csv(self.estimation_covariance_diag_history, f"{path_prefix}_estimation_covariance_diag.csv")
+        dict_to_csv(self.innovation_covariance_diag_history, f"{path_prefix}_innovation_covariance_diag.csv")
 
     def check_covariance_matrix_P(self) -> None:
         """Check if the covariance matrix P is symmetric and positive semi-definite."""
@@ -136,19 +172,37 @@ class Extended_Kalman_Filter():
         if np.any(eigvals < -1e-10):  # Allow tiny negative values from round-off
             print(f"Warning: Covariance matrix P lost PSD, negative eigenvalues: {eigvals[eigvals < 0]}")
     
-    def update_state(self, new_state):
+    def update_state(self, new_state) -> None:
         if len(new_state) == self.num_states:
             for idx, state in enumerate(new_state):
                 self.current_state[idx] = state
+    
+    def run_low_pass_filter(self) -> None:
+        if self.filter is not None:
+            self.current_state = self.filter.update(self.current_state)
+
+    def numerical_jacobian(self, f, x, eps=1e-7, *args):
+        x = np.asarray(x, dtype=float)
+        f0 = f(x, *args)
+        m = f0.size
+        n = x.size
+        J = np.zeros((m, n))
+        for j in range(n):
+            x_perturb = x.copy()
+            x_perturb[j] += eps
+            f1 = f(x_perturb, *args)
+            J[:, j] = (f1 - f0) / eps
+        return J
 
 class Orientation_EKF(Extended_Kalman_Filter):
     def __init__(
             self, gyroscope_reading, accelerometer_reading, magnetometer_reading, 
-            prediction_timestep, initial_quaternion=None
+            prediction_timestep, initial_quaternion
             ):
         self.GRAVITATION_ACCELERATION_ms2 = GRAVITATION_ACCELERATION_ms2 # [m/s^2]
-        self.LOCAL_MAGNETIC_FIELD_VECTOR = magnetometer_reading 
-        # initial reading is set as North, [gauss]
+        self.LOCAL_MAGNETIC_NORTH = self.rot_mat_from_quat(initial_quaternion) @ magnetometer_reading
+        print(f"Local Magnetic North Vector: {self.LOCAL_MAGNETIC_NORTH}")
+        # initial reading in NED is set as North, [gauss]
         self.PREDICTION_TIMESTEP_s = prediction_timestep # [seconds]
 
         state_equilibrium = np.array([
@@ -160,14 +214,16 @@ class Orientation_EKF(Extended_Kalman_Filter):
 
         observation_equilibrium = np.array([
             0.0, 0.0, -self.GRAVITATION_ACCELERATION_ms2,
-            magnetometer_reading[0], magnetometer_reading[1], magnetometer_reading[2]
+            self.LOCAL_MAGNETIC_NORTH[0],
+            self.LOCAL_MAGNETIC_NORTH[1],
+            self.LOCAL_MAGNETIC_NORTH[2]
         ])
 
         state_dict = {
-            "quaternion (w)": [initial_quaternion[0] if initial_quaternion is not None else 1.0],
-            "quaternion (x)": [initial_quaternion[1] if initial_quaternion is not None else 0.0],
-            "quaternion (y)": [initial_quaternion[2] if initial_quaternion is not None else 0.0],
-            "quaternion (z)": [initial_quaternion[3] if initial_quaternion is not None else 0.0],
+            "quaternion (w)": [initial_quaternion[0]],
+            "quaternion (x)": [initial_quaternion[1]],
+            "quaternion (y)": [initial_quaternion[2]],
+            "quaternion (z)": [initial_quaternion[3]],
             "gyroscope bias (x)": [0.0],
             "gyroscope bias (y)": [0.0],
             "gyroscope bias (z)": [0.0],
@@ -186,34 +242,51 @@ class Orientation_EKF(Extended_Kalman_Filter):
             "accelerometer (z)": [accelerometer_reading[2]],
             "magnetometer (x)": [magnetometer_reading[0]],
             "magnetometer (y)": [magnetometer_reading[1]],
-            "magnetometer (z)": [magnetometer_reading[2]]
-            
+            "magnetometer (z)": [magnetometer_reading[2]]   
         }
         process_noise_covariance_Q = np.diag([
-            5e0, # qw
-            5e0, # qx
-            5e0, # qy
-            5e0, # qz
-            1.0e0, # gyro bias (x)
-            1.0e0, # gyro bias (y)
-            1.0e0, # gyro bias (z)
-            1.0e0, # magnetometer bias (x)
-            1.0e0, # magnetometer bias (y)
-            1.0e0, # magnetometer bias (z)
+            1.0e-8, # qw
+            1.0e-8, # qx
+            1.0e-8, # qy
+            1.0e-8, # qz
+            1.0e-8, # gyro bias (x)
+            1.0e-8, # gyro bias (y)
+            1.0e-8, # gyro bias (z)
+            1.0e-8, # magnetometer bias (x)
+            1.0e-8, # magnetometer bias (y)
+            1.0e-8, # magnetometer bias (z)
         ])
         measurement_noise_covariance_R = np.diag([
-            1.0e0, # accelerometer (x)
-            1.0e0, # accelerometer (y)
-            1.0e0, # accelerometer (z)
-            1.0e0, # magnetometer (x)
-            1.0e0, # magnetometer (y)
-            1.0e0, # magnetometer (z)
+            5.0e5, # accelerometer (x)
+            5.0e5, # accelerometer (y)
+            5.0e5, # accelerometer (z)
+            5.0e5, # magnetometer (x)
+            5.0e5, # magnetometer (y)
+            5.0e5, # magnetometer (z)
         ])
         super().__init__(
             state_dict, input_dict, observation_dict, 
             process_noise_covariance_Q, measurement_noise_covariance_R,
             state_equilibrium, input_equilibrium, observation_equilibrium,
-            )
+            lpf_alpha=None
+        )
+
+    def rot_mat_from_quat(self, q) -> np.ndarray:
+        rotation_matrix = np.array([
+            [1 - 2*q[2]**2 - 2*q[3]**2, 2*q[1]*q[2] - 2*q[3]*q[0], 2*q[1]*q[3] + 2*q[2]*q[0]],
+            [2*q[1]*q[2] + 2*q[3]*q[0], 1 - 2*q[1]**2 - 2*q[3]**2, 2*q[2]*q[3] - 2*q[1]*q[0]],
+            [2*q[1]*q[3] - 2*q[2]*q[0], 2*q[2]*q[3] + 2*q[1]*q[0], 1 - 2*q[1]**2 - 2*q[2]**2]
+        ])
+        return rotation_matrix
+    
+    def observation_model(self, state):
+        R = self.rot_mat_from_quat(state[:4])
+        predicted_observation = np.vstack([
+            R.T @ np.array([0, 0, -self.GRAVITATION_ACCELERATION_ms2]),
+              # accelerometer
+            R.T @ self.LOCAL_MAGNETIC_NORTH  # magnetometer
+        ])
+        return predicted_observation.flatten()
 
     def get_state_transition_matrix_A(self) -> np.ndarray:
         dt = self.PREDICTION_TIMESTEP_s
@@ -233,39 +306,6 @@ class Orientation_EKF(Extended_Kalman_Filter):
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
             ], dtype=float)
         return state_transition_matrix
-
-    def get_observation_matrix_H(self) -> np.ndarray:
-        g = self.GRAVITATION_ACCELERATION_ms2
-        m_x, m_y, m_z = self.LOCAL_MAGNETIC_FIELD_VECTOR
-        q_w, q_x, q_y, q_z = self.current_state[:4]
-        
-        observation_matrix = np.array([
-            [-2*g*q_y, 2*g*q_z, -2*g*q_w, 2*g*q_x, 0, 0, 0, 0, 0, 0], 
-            [2*g*q_x, 2*g*q_w, 2*g*q_z, 2*g*q_y, 0, 0, 0, 0, 0, 0], 
-            [0, -4*g*q_x, -4*g*q_y, 0, 0, 0, 0, 0, 0, 0], 
-            [
-                2*m_y*q_z - 2*m_z*q_y, 
-                2*m_y*q_y + 2*m_z*q_z, 
-                -4*m_x*q_y + 2*m_y*q_x - 2*m_z*q_w, 
-                -4*m_x*q_z + 2*m_y*q_w + 2*m_z*q_x,
-                0, 0, 0, 1, 0, 0
-                ], 
-            [
-                -2*m_x*q_z + 2*m_z*q_x, 
-                2*m_x*q_y - 4*m_y*q_x + 2*m_z*q_w, 
-                2*m_x*q_x + 2*m_z*q_z, 
-                -2*m_x*q_w - 4*m_y*q_z + 2*m_z*q_y, 
-                0, 0, 0, 0, 1, 0
-                ], 
-            [
-                2*m_x*q_y - 2*m_y*q_x, 
-                2*m_x*q_z - 2*m_y*q_w - 4*m_z*q_x, 
-                2*m_x*q_w + 2*m_y*q_z - 4*m_z*q_y, 
-                2*m_x*q_x + 2*m_y*q_y, 
-                0, 0, 0, 0, 0, 1
-                ]
-            ], dtype=float)
-        return observation_matrix
 
     def predict(self) -> None:
         q_w, q_x, q_y, q_z, bg_x, bg_y, bg_z, bm_x, bm_y, bm_z = self.current_state
@@ -291,8 +331,8 @@ class Orientation_EKF(Extended_Kalman_Filter):
         qz_new = qz / length_of_quaternion
         self.current_state[:4] = [qw_new, qx_new, qy_new, qz_new]
 
-    def update(self, timestep : float = None) -> None:
-        super().update(timestep)
+    def update(self) -> None:
+        super().update()
         self.normalize_quaternion()
 
 class Position_Velocity_EKF(Extended_Kalman_Filter):
@@ -327,7 +367,7 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             0.0, 0.0, -self.GRAVITATION_ACCELERATION_ms2, 
         ])
 
-        observation_equilibrium = np.array([barometer_reading[0]])
+        observation_equilibrium = barometer_reading
 
         state_dict = {
             "position (x) [m]": [0.0],
@@ -346,21 +386,22 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             "barometer pressure [Pa]": [barometer_reading[0]],
         }
         process_noise_covariance_Q = np.diag([
-            1.0e10, # px
-            1.0e10, # py
+            1.0e5, # px
+            1.0e5, # py
             1.0e2, # pz
-            1.0e-1, # vx
-            1.0e-1, # vy
-            1.0e6, # vz
+            1.0e-3, # vx
+            1.0e-3, # vy
+            1.0e-3, # vz
         ])
         measurement_noise_covariance_R = np.diag([
-            1.0e-15, # baro pressure
+            1.0e-5, # baro pressure
         ])
         super().__init__(
             state_dict, input_dict, observation_dict, 
             process_noise_covariance_Q, measurement_noise_covariance_R,
             state_equilibrium, input_equilibrium, observation_equilibrium,
-            )
+            lpf_alpha=POSITION_LPF_ALPHA,
+        )
 
     def update_orientation(self, orientation: np.ndarray) -> None:
         self.orientation_state = orientation
@@ -377,21 +418,18 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             ], dtype=float)
         return state_transition_matrix
 
-    def get_observation_matrix_H(self) -> np.ndarray:
+    def observation_model(self, state) -> np.ndarray:
+        altitude_m = state[2]
         P_0 = self.PRESSURE_SEA_LEVEL_Pa
         R = self.UNIVERSAL_GAS_CONSTANT_JmolK
         M = self.AIR_MOLAR_MASS_kgmol
         g = self.GRAVITATION_ACCELERATION_ms2
         T_r = self.ROOM_TEMPERATURE_K
 
-        p_z = self.current_state[2] # Current altitude [m]
-
-        observation_matrix = np.array([[
-            0, 0, 
-            M * P_0 * g * np.exp(M * g * p_z / (R * T_r)) / (R * T_r), 
-            0, 0, 0
-        ]])
-        return observation_matrix
+        predicted_observation = np.array([
+            P_0 * np.exp(M * g * altitude_m / (T_r * R))
+        ])
+        return predicted_observation
     
     def predict(self) -> None:
         p_x, p_y, p_z, v_x, v_y, v_z = self.current_state
@@ -401,32 +439,27 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
         dt = self.PREDICTION_TIMESTEP
         g = self.GRAVITATION_ACCELERATION_ms2
 
-        p_x_next = (
-            dt**2*(0.5*a_x*(-2*q_y**2 - 2*q_z**2 + 1) + 
-                   0.5*a_y*(-2*q_w*q_z + 2*q_x*q_y) + 0.5*a_z*(2*q_w*q_y + 2*q_x*q_z)) + 
-                   dt*v_x + p_x
-        )
-        p_y_next = (
-            dt**2*(0.5*(a_x)*(2*q_w*q_z + 2*q_x*q_y) + 
-                   0.5*(a_y)*(-2*q_x**2 - 2*q_z**2 + 1) + 0.5*(a_z)*(-2*q_w*q_x + 2*q_y*q_z)) + dt*v_y + p_y
-        )
-        p_z_next = (
-            dt**2*(0.5*g + 0.5*(a_x)*(-2*q_w*q_y + 2*q_x*q_z) + 
-                   0.5*(a_y)*(2*q_w*q_x + 2*q_y*q_z) + 0.5*(a_z)*(-2*q_x**2 - 2*q_y**2 + 1)) + dt*v_z + p_z
-        ) 
-        v_x_next = (
-            dt*((a_x)*(-2*q_y**2 - 2*q_z**2 + 1) + 
-                (a_y)*(-2*q_w*q_z + 2*q_x*q_y) + (a_z)*(2*q_w*q_y + 2*q_x*q_z)) + v_x
-        )
-        v_y_next = (
-            dt*((a_x)*(2*q_w*q_z + 2*q_x*q_y) + 
-                (a_y)*(-2*q_x**2 - 2*q_z**2 + 1) + (a_z)*(-2*q_w*q_x + 2*q_y*q_z)) + v_y
-        )
-        v_z_next = (
-            dt*(g + (a_x)*(-2*q_w*q_y + 2*q_x*q_z) + 
-                (a_y)*(2*q_w*q_x + 2*q_y*q_z) + (a_z)*(-2*q_x**2 - 2*q_y**2 + 1)) + v_z
-        )
+        state = np.array([p_x, p_y, p_z, v_x, v_y, v_z])
 
-        self.current_state = np.array([p_x_next, p_y_next, p_z_next, v_x_next, v_y_next, v_z_next])
+        def state_derivative(s):
+            """Compute state derivative: [v_x, v_y, v_z, a_x_ned, a_y_ned, a_z_ned]"""
+            px, py, pz, vx, vy, vz = s
+            
+            # Rotate acceleration from body frame to NED frame
+            a_x_ned = a_x*(-2*q_y**2 - 2*q_z**2 + 1) + a_y*(-2*q_w*q_z + 2*q_x*q_y) + a_z*(2*q_w*q_y + 2*q_x*q_z)
+            a_y_ned = a_x*(2*q_w*q_z + 2*q_x*q_y) + a_y*(-2*q_x**2 - 2*q_z**2 + 1) + a_z*(-2*q_w*q_x + 2*q_y*q_z)
+            a_z_ned = g + a_x*(-2*q_w*q_y + 2*q_x*q_z) + a_y*(2*q_w*q_x + 2*q_y*q_z) + a_z*(-2*q_x**2 - 2*q_y**2 + 1)
+            
+            return np.array([vx, vy, vz, a_x_ned, a_y_ned, a_z_ned])
+
+        # RK4 Integration
+        k1 = state_derivative(state)
+        k2 = state_derivative(state + 0.5*dt*k1)
+        k3 = state_derivative(state + 0.5*dt*k2)
+        k4 = state_derivative(state + dt*k3)
+
+        state_next = state + (dt/6.0) * (k1 + 2*k2 + 2*k3 + k4)
+
+        self.current_state = state_next
         self.predict_estimation_covariance()
 
