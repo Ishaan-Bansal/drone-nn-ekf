@@ -1,5 +1,3 @@
-import numpy as np
-
 GRAVITATION_ACCELERATION_ms2 = 9.81 # Acceleration due to gravity [m/s^2]
 
 # --- Atmospheric Parameters (for baro) ---
@@ -29,15 +27,4 @@ ACCEL_LPF_ALPHA_Z = 0.1
 MAG_LPF_ALPHA = 0.1
 GYRO_LPF_ALPHA = 0.1
 BARO_LPF_ALPHA = 0.3
-
-# EKF Low Pass Filter 
-ORIENTATION_LPF_ALPHA = np.array([
-    0.1, 0.1, 0.1, 0.1, # Quaternion (4)
-    0.1, 0.1, 0.1,  # Gyro bias (3)
-    0.1, 0.1, 0.1,  # Mag bias (3)
-])
-
-POSITION_LPF_ALPHA = np.array([
-    0.1, 0.1, 0.1, # Position (3)
-    0.001, 0.001, 0.0005, # Velocity (3)
-])
+VEL_Z_LPF_ALPHA = 0.1
