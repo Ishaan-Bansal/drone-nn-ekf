@@ -9,7 +9,7 @@ from parameters import (
     TRAINING_FILES
 )
 
-filename = TRAINING_FILES[0] 
+filename = TRAINING_FILES[2] 
 ulog_file = f'flight_data/{filename}.ulg'
 log = ULog(ulog_file)
 

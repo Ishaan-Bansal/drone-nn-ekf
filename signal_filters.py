@@ -45,7 +45,7 @@ class LowPassFilter_1D:
 
 
 class LowPassFilter_3D:
-    def __init__(self, alpha=None, alpha_arr=None, initial_array=[0.0, 0.0, 0.0]):
+    def __init__(self, alpha, alpha_arr=None, initial_array=[0.0, 0.0, 0.0]):
         """
         Simple exponential moving average (EMA) low-pass filter.
 
@@ -59,7 +59,7 @@ class LowPassFilter_3D:
             alpha = np.array(alpha_arr, dtype=float)
             if not np.all((0.0 < alpha) & (alpha <= 1.0)):
                 raise ValueError("Alpha must be in (0, 1] for all dimensions.")
-        elif alpha is not None and not (0.0 < alpha <= 1.0):
+        elif not (0.0 < alpha <= 1.0):
             raise ValueError("Alpha must be in (0, 1].")
         
         self.alpha = alpha

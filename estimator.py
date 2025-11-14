@@ -85,10 +85,10 @@ class Extended_Kalman_Filter():
         self.current_observation = new_observation
         self.current_input = new_input
 
-    def update(self) -> None:
+    def update(self, timestep : float = None) -> None:
         self.check_covariance_matrix_P()
         current_observation_matrix_H = self.get_observation_matrix_H()
-        kalman_gain_K = self.get_kalman_gain_K()
+        kalman_gain_K = self.get_kalman_gain_K(timestep)
         self.current_state = (
             self.current_state + 
             kalman_gain_K @ ((self.current_observation - self.observation_equilibrium) - current_observation_matrix_H @ self.current_state)
@@ -190,10 +190,10 @@ class Orientation_EKF(Extended_Kalman_Filter):
             
         }
         process_noise_covariance_Q = np.diag([
-            1.0e6, # qw
-            1.0e6, # qx
-            1.0e6, # qy
-            1.0e6, # qz
+            5e0, # qw
+            5e0, # qx
+            5e0, # qy
+            5e0, # qz
             1.0e0, # gyro bias (x)
             1.0e0, # gyro bias (y)
             1.0e0, # gyro bias (z)
@@ -291,8 +291,8 @@ class Orientation_EKF(Extended_Kalman_Filter):
         qz_new = qz / length_of_quaternion
         self.current_state[:4] = [qw_new, qx_new, qy_new, qz_new]
 
-    def update(self) -> None:
-        super().update()
+    def update(self, timestep : float = None) -> None:
+        super().update(timestep)
         self.normalize_quaternion()
 
 class Position_Velocity_EKF(Extended_Kalman_Filter):
@@ -327,7 +327,7 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             0.0, 0.0, -self.GRAVITATION_ACCELERATION_ms2, 
         ])
 
-        observation_equilibrium = np.array([barometer_reading])
+        observation_equilibrium = np.array([barometer_reading[0]])
 
         state_dict = {
             "position (x) [m]": [0.0],
@@ -343,7 +343,7 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             "accelerometer (z)": [accelerometer_reading[2]],
         }
         observation_dict = {
-            "barometer pressure [Pa]": [barometer_reading],
+            "barometer pressure [Pa]": [barometer_reading[0]],
         }
         process_noise_covariance_Q = np.diag([
             1.0e10, # px

@@ -5,7 +5,6 @@ import copy
 from scipy.spatial.transform import Rotation as R
 from estimator import Orientation_EKF, Position_Velocity_EKF
 from signal_filters import LowPassFilter_1D, LowPassFilter_3D
-from sensors import Sensor_1D, Sensor_3D
 from neural_net import Residual_Estimator
 from parameters import (
     TRAINING_FILES, TEST_FILES,
@@ -19,7 +18,6 @@ PRED_DT = 0.004
 UPDATE_DT = 0.004
 PRED_STEPS_PER_UPDATE = int(UPDATE_DT / PRED_DT)
 GYRO_RAD_TO_DEG = 180.0 / np.pi
-INIT_TIME = 5 # seconds
 
 # ---- Helpers ----
 def acc_mag_to_quaternion(acc, mag):
@@ -172,20 +170,6 @@ def run_test(filename, with_nn=False):
     timestamps_combined = sensor_combined_msgs.data['timestamp'] * 1e-6
     timestamps_baro = baro_msgs.data['timestamp'] * 1e-6
 
-    # ---- Create Sensor Instances ----
-    sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
-    sensor_combined_accel = Sensor_3D(
-        'accelerometer', sensor_combined_msgs,
-        ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-        alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
-    )
-    sensor_combined_gyro = Sensor_3D(
-        'gyroscope', sensor_combined_msgs,
-        ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
-        alpha=GYRO_LPF_ALPHA
-    )
-    sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
-
     # ---- PX4 Estimator Attitude ----
     att_topic = next(x for x in ulog.data_list if x.name == 'vehicle_attitude')
     t_att = att_topic.data['timestamp'] * 1e-6
@@ -194,20 +178,87 @@ def run_test(filename, with_nn=False):
     qy_px4 = att_topic.data['q[2]']
     qz_px4 = att_topic.data['q[3]']
 
-    # ---- Time Alignment ----
+    # ---- EKF & Filters Init ----
+    trim_time = 0.5 # seconds
+    init_time = 5 # seconds
+
+    # Calculate start_idx for each sensor based on its dt
+    dt_mag = timestamps_mag[1] - timestamps_mag[0]
+    dt_combined = timestamps_combined[1] - timestamps_combined[0]
+    dt_baro = timestamps_baro[1] - timestamps_baro[0]
+
+    trim_idx_mag = int(trim_time / dt_mag)
+    trim_idx_combined = int(trim_time / dt_combined)
+    trim_idx_baro = int(trim_time / dt_baro)
+
+    start_idx_mag = int(init_time / dt_mag)
+    start_idx_combined = int(init_time / dt_combined)
+    start_idx_baro = int(init_time / dt_baro)
+
+    start_time = max(
+        timestamps_mag[start_idx_mag],
+        timestamps_combined[start_idx_combined],
+        timestamps_baro[start_idx_baro]
+    )
     end_time = min(
         timestamps_mag[-1],
         timestamps_combined[-1],
         timestamps_baro[-1]
     )
-    time_steps = np.arange(INIT_TIME, end_time, UPDATE_DT)
+    time_steps = np.arange(start_time, end_time, UPDATE_DT)
+
+    mag_idx = start_idx_mag
+    combined_idx = start_idx_combined
+    baro_idx = start_idx_baro
 
     print("EKF boot up")
 
-    init_accel = sensor_combined_accel.get_data(INIT_TIME)
-    init_mag = sensor_mag.get_data(INIT_TIME)
-    init_gyro = sensor_combined_gyro.get_data(INIT_TIME)
-    init_baro = sensor_baro.get_data(INIT_TIME)
+    # Initialize Filters
+    velocity_z_low_pass_filter = LowPassFilter_1D(alpha=VEL_Z_LPF_ALPHA)
+    accelerometer_low_pass_filter = LowPassFilter_3D(
+        alpha=None,
+        alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z],
+    )
+    magnetometer_low_pass_filter = LowPassFilter_3D(alpha=MAG_LPF_ALPHA)
+    gyro_low_pass_filter = LowPassFilter_3D(alpha=GYRO_LPF_ALPHA)
+    baro_low_pass_filter = LowPassFilter_1D(alpha=BARO_LPF_ALPHA)
+
+    # Apply filters to initial samples and average for EKF init
+    accel_samples = []
+    gyro_samples = []
+    mag_samples = []
+    baro_samples = []
+
+    for i in range(trim_idx_combined, start_idx_combined):
+        accel_samples.append(accelerometer_low_pass_filter.update([
+            sensor_combined_msgs.data['accelerometer_m_s2[0]'][i],
+            sensor_combined_msgs.data['accelerometer_m_s2[1]'][i],
+            sensor_combined_msgs.data['accelerometer_m_s2[2]'][i]
+        ]))
+        gyro_samples.append(gyro_low_pass_filter.update([
+            sensor_combined_msgs.data['gyro_rad[0]'][i],
+            sensor_combined_msgs.data['gyro_rad[1]'][i],
+            sensor_combined_msgs.data['gyro_rad[2]'][i]
+        ]))
+
+    for i in range(trim_idx_mag, start_idx_mag):
+        mag_samples.append(magnetometer_low_pass_filter.update([
+            mag_msgs.data['x'][i],
+            mag_msgs.data['y'][i],
+            mag_msgs.data['z'][i]
+        ]))
+
+    for i in range(trim_idx_baro, start_idx_baro):
+        baro_samples.append([
+            baro_low_pass_filter.update(baro_msgs.data['pressure'][i]),
+            baro_msgs.data['temperature'][i]
+        ])
+
+    init_accel = np.mean(np.array(accel_samples), axis=0)
+    init_gyro = np.mean(np.array(gyro_samples), axis=0)
+    init_gyro *= GYRO_RAD_TO_DEG
+    init_mag = np.mean(np.array(mag_samples), axis=0)
+    init_baro = np.mean(np.array(baro_samples), axis=0)
 
     init_quat = compute_initial_quaternion(init_accel, init_mag)
     euler = R.from_quat([init_quat[1], init_quat[2], init_quat[3], init_quat[0]]).as_euler('xyz', degrees=True) # scipy uses x,y,z,w
@@ -255,16 +306,35 @@ def run_test(filename, with_nn=False):
             orientation_full.predict()
             position_full.update_orientation(orientation_full.current_state[:4])
             position_full.predict()
-            # position_full.current_state[5] = velocity_z_low_pass_filter.update(
-            #     position_full.current_state[5]
-            # ) TODO: Do this in estimator.py
+            position_full.current_state[5] = velocity_z_low_pass_filter.update(
+                position_full.current_state[5]
+            )
             # orientation_full.update_ekf_history(time=curr_time)
             # position_full.update_ekf_history(time=curr_time)
 
-        accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
-        gyro_filtered = sensor_combined_gyro.get_data(curr_time) #* GYRO_RAD_TO_DEG
-        magnetometer_filtered = sensor_mag.get_data(curr_time)
-        baro_pressure_filtered = sensor_baro.get_data(curr_time)
+        # Find latest sensor readings at or before curr_time
+        mag_idx = get_latest_index(timestamps_mag, curr_time)
+        combined_idx = get_latest_index(timestamps_combined, curr_time)
+        baro_idx = get_latest_index(timestamps_baro, curr_time)
+        # Filter Sensor Data
+        accelerometer_filtered = accelerometer_low_pass_filter.update(
+            [sensor_combined_msgs.data['accelerometer_m_s2[0]'][combined_idx],
+             sensor_combined_msgs.data['accelerometer_m_s2[1]'][combined_idx],
+             sensor_combined_msgs.data['accelerometer_m_s2[2]'][combined_idx]]
+        )
+        magnetometer_filtered = magnetometer_low_pass_filter.update(
+            [mag_msgs.data['x'][mag_idx],
+             mag_msgs.data['y'][mag_idx],
+             mag_msgs.data['z'][mag_idx]]
+        )
+        gyro_filtered = gyro_low_pass_filter.update(
+            [sensor_combined_msgs.data['gyro_rad[0]'][combined_idx],
+             sensor_combined_msgs.data['gyro_rad[1]'][combined_idx],
+             sensor_combined_msgs.data['gyro_rad[2]'][combined_idx]]
+        )
+        baro_pressure_filtered = baro_low_pass_filter.update(
+            baro_msgs.data['pressure'][baro_idx]
+        )
 
         # Update Orientation EKF
         orientation_full.set_observation(
@@ -278,7 +348,7 @@ def run_test(filename, with_nn=False):
             ]),
             np.array(gyro_filtered)
         )
-        orientation_full.update()
+        orientation_full.update(timestep=i)
         orientation_full.update_ekf_history(time=curr_time)
 
         # Update Position EKF
@@ -287,26 +357,20 @@ def run_test(filename, with_nn=False):
             np.array(accelerometer_filtered),
         )
         position_full.update_orientation(orientation_full.current_state[:4])
-        position_full.update()
-        # position_full.current_state[5] = velocity_z_low_pass_filter.update(
-        #     position_full.current_state[5]
-        # ) TODO: Do this in estimator.py
+        position_full.update(timestep=i)
+        position_full.current_state[5] = velocity_z_low_pass_filter.update(
+            position_full.current_state[5]
+        )
         position_full.update_ekf_history(time=curr_time)
 
 
-    # ---- Sensor Restart ----
-    sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
-    sensor_combined_accel = Sensor_3D(
-        'accelerometer', sensor_combined_msgs,
-        ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-        alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
-    )
-    sensor_combined_gyro = Sensor_3D(
-        'gyroscope', sensor_combined_msgs,
-        ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
-        alpha=GYRO_LPF_ALPHA
-    )
-    sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
+    # Reset Filters between scenarios
+    velocity_z_low_pass_filter.reset()
+    accelerometer_low_pass_filter.reset()
+    magnetometer_low_pass_filter.reset()
+    gyro_low_pass_filter.reset()
+    baro_low_pass_filter.reset()
+
 
     # ---- Scenario 2: Predict  ----
     start_time_0 = max(
@@ -315,8 +379,22 @@ def run_test(filename, with_nn=False):
         timestamps_baro[0]
     )
     for curr_time in np.arange(start_time_0, end_time, PRED_DT):
-        accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
-        gyro_filtered = sensor_combined_gyro.get_data(curr_time) #* GYRO_RAD_TO_DEG
+        # Find latest sensor readings at or before curr_time
+        mag_idx = get_latest_index(timestamps_mag, curr_time)
+        combined_idx = get_latest_index(timestamps_combined, curr_time)
+        baro_idx = get_latest_index(timestamps_baro, curr_time)
+        # Filter Sensor Data
+        accelerometer_filtered = accelerometer_low_pass_filter.update(
+            [sensor_combined_msgs.data['accelerometer_m_s2[0]'][combined_idx],
+             sensor_combined_msgs.data['accelerometer_m_s2[1]'][combined_idx],
+             sensor_combined_msgs.data['accelerometer_m_s2[2]'][combined_idx]]
+        )
+        gyro_filtered = gyro_low_pass_filter.update(
+            [sensor_combined_msgs.data['gyro_rad[0]'][combined_idx],
+             sensor_combined_msgs.data['gyro_rad[1]'][combined_idx],
+             sensor_combined_msgs.data['gyro_rad[2]'][combined_idx]]
+        )
+
         orientation_pred.current_input = np.array(gyro_filtered)
         position_pred.current_input = np.array(accelerometer_filtered)
         position_pred.update_orientation(orientation_pred.current_state[:4])
@@ -327,32 +405,47 @@ def run_test(filename, with_nn=False):
         )
 
         position_pred.predict()
-        # position_full.current_state[5] = velocity_z_low_pass_filter.update(
-        #     position_full.current_state[5]
-        # ) TODO: Do this in estimator.py
+        position_full.current_state[5] = velocity_z_low_pass_filter.update(
+            position_full.current_state[5]
+        )
         orientation_pred.update_ekf_history(time=curr_time)
         position_pred.update_ekf_history(time=curr_time)
+        prev_time = curr_time
 
-    # ---- Sensor Restart ----
-    sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
-    sensor_combined_accel = Sensor_3D(
-        'accelerometer', sensor_combined_msgs,
-        ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-        alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
-    )
-    sensor_combined_gyro = Sensor_3D(
-        'gyroscope', sensor_combined_msgs,
-        ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
-        alpha=GYRO_LPF_ALPHA
-    )
-    sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
+
+    # Reset Filters between scenarios
+    velocity_z_low_pass_filter.reset()
+    accelerometer_low_pass_filter.reset()
+    magnetometer_low_pass_filter.reset()
+    gyro_low_pass_filter.reset()
+    baro_low_pass_filter.reset()
+
 
     # ---- Scenario 3: Update Only ----
     for curr_time in time_steps:
-        accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
-        gyro_filtered = sensor_combined_gyro.get_data(curr_time) #* GYRO_RAD_TO_DEG
-        magnetometer_filtered = sensor_mag.get_data(curr_time)
-        baro_pressure_filtered = sensor_baro.get_data(curr_time)
+        # Find latest sensor readings at or before curr_time
+        mag_idx = get_latest_index(timestamps_mag, curr_time)
+        combined_idx = get_latest_index(timestamps_combined, curr_time)
+        baro_idx = get_latest_index(timestamps_baro, curr_time)
+        # Filter Sensor Data
+        accelerometer_filtered = accelerometer_low_pass_filter.update(
+            [sensor_combined_msgs.data['accelerometer_m_s2[0]'][combined_idx],
+             sensor_combined_msgs.data['accelerometer_m_s2[1]'][combined_idx],
+             sensor_combined_msgs.data['accelerometer_m_s2[2]'][combined_idx]]
+        )
+        magnetometer_filtered = magnetometer_low_pass_filter.update(
+            [mag_msgs.data['x'][mag_idx],
+             mag_msgs.data['y'][mag_idx],
+             mag_msgs.data['z'][mag_idx]]
+        )
+        gyro_filtered = gyro_low_pass_filter.update(
+            [sensor_combined_msgs.data['gyro_rad[0]'][combined_idx],
+             sensor_combined_msgs.data['gyro_rad[1]'][combined_idx],
+             sensor_combined_msgs.data['gyro_rad[2]'][combined_idx]]
+        )
+        baro_pressure_filtered = baro_low_pass_filter.update(
+            baro_msgs.data['pressure'][baro_idx]
+        )
 
         # Orientation Update - manual
         quaternion = np.array([acc_mag_to_quaternion(
@@ -363,7 +456,6 @@ def run_test(filename, with_nn=False):
         orientation_upd.update_ekf_history(time=curr_time)
 
         # Position EKF Update — manual
-        print(baro_pressure_filtered / position_upd.PRESSURE_SEA_LEVEL_Pa)
         pz = (
             np.log(baro_pressure_filtered / position_upd.PRESSURE_SEA_LEVEL_Pa) *
             position_upd.ROOM_TEMPERATURE_K *
@@ -375,19 +467,13 @@ def run_test(filename, with_nn=False):
         position_upd.current_state[2] = pz
         position_upd.update_ekf_history(time=curr_time)
 
-    # ---- Sensor Restart ----
-    sensor_mag = Sensor_3D('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=MAG_LPF_ALPHA)
-    sensor_combined_accel = Sensor_3D(
-        'accelerometer', sensor_combined_msgs,
-        ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-        alpha_arr=[ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
-    )
-    sensor_combined_gyro = Sensor_3D(
-        'gyroscope', sensor_combined_msgs,
-        ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
-        alpha=GYRO_LPF_ALPHA
-    )
-    sensor_baro = Sensor_1D('barometer', baro_msgs, 'pressure', alpha=BARO_LPF_ALPHA)
+    # Reset Filters between scenarios
+    velocity_z_low_pass_filter.reset()
+    accelerometer_low_pass_filter.reset()
+    magnetometer_low_pass_filter.reset()
+    gyro_low_pass_filter.reset()
+    baro_low_pass_filter.reset()
+
 
     # ---- Scenario 4: Full EKF + NN ----
     if with_nn:
@@ -419,16 +505,38 @@ def run_test(filename, with_nn=False):
                 orientation_full_nn.predict()
                 position_full_nn.update_orientation(orientation_full_nn.current_state[:4])
                 position_full_nn.predict()
-                # position_full_nn.current_state[5] = velocity_z_low_pass_filter.update(
-                #     position_full_nn.current_state[5]
-                # )
+                position_full_nn.current_state[5] = velocity_z_low_pass_filter.update(
+                    position_full_nn.current_state[5]
+                )
                 orientation_full_nn.update_ekf_history(time=curr_time)
                 position_full_nn.update_ekf_history(time=curr_time)
 
-            accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
-            gyro_filtered = sensor_combined_gyro.get_data(curr_time) #* GYRO_RAD_TO_DEG
-            magnetometer_filtered = sensor_mag.get_data(curr_time)
-            baro_pressure_filtered = sensor_baro.get_data(curr_time)
+            # Find latest sensor readings at or before curr_time
+            mag_idx = get_latest_index(timestamps_mag, curr_time)
+            combined_idx = get_latest_index(
+                timestamps_combined, curr_time
+                )
+            baro_idx = get_latest_index(timestamps_baro, curr_time)
+            # Filter Sensor Data
+            accelerometer_filtered = accelerometer_low_pass_filter.update(
+                [sensor_combined_msgs.data['accelerometer_m_s2[0]'][combined_idx],
+                 sensor_combined_msgs.data['accelerometer_m_s2[1]'][combined_idx],
+                 sensor_combined_msgs.data['accelerometer_m_s2[2]'][combined_idx]]
+            )
+            magnetometer_filtered = magnetometer_low_pass_filter.update(
+                [mag_msgs.data['x'][mag_idx],
+                 mag_msgs.data['y'][mag_idx],
+                 mag_msgs.data['z'][mag_idx]]
+            )
+            gyro_filtered = gyro_low_pass_filter.update(
+                [sensor_combined_msgs.data['gyro_rad[0]'][combined_idx],
+                 sensor_combined_msgs.data['gyro_rad[1]'][combined_idx],
+                 sensor_combined_msgs.data['gyro_rad[2]'][combined_idx]]
+            )
+            gyro_filtered = [g * GYRO_RAD_TO_DEG for g in gyro_filtered]
+            baro_pressure_filtered = baro_low_pass_filter.update(
+                baro_msgs.data['pressure'][baro_idx]
+            )
 
             # Neural Net Correction
             ekf_state = np.concat((
@@ -471,7 +579,7 @@ def run_test(filename, with_nn=False):
                 ]),
                 np.array(gyro_filtered)
             )
-            orientation_full_nn.update()
+            orientation_full_nn.update(timestep=i)
             orientation_full_nn.update_ekf_history(time=curr_time)
 
             # Update Position EKF only when new barometer data is available
@@ -480,10 +588,10 @@ def run_test(filename, with_nn=False):
                 np.array(accelerometer_filtered),
             )
             position_full_nn.update_orientation(orientation_full_nn.current_state[:4])
-            position_full_nn.update()
-            # position_full_nn.current_state[5] = velocity_z_low_pass_filter.update(
-            #     position_full_nn.current_state[5]
-            # ) TODO: Do this in estimator.py 
+            position_full_nn.update(timestep=i)
+            position_full_nn.current_state[5] = velocity_z_low_pass_filter.update(
+                position_full_nn.current_state[5]
+            )
             position_full_nn.update_ekf_history(time=curr_time)
 
 
