@@ -3,7 +3,7 @@
 ## Overview
 The goal of this project was to determine sensor fusion techniques to estimate the state of the quadcopter without the assistance of GPS. For which, the specific filtering technique chosen was the Extended Kalman Filter augmented with a Neural Network.
 
-The Extended Kalman Filter (EKF) estimates:
+The Extended Kalman Filter (EKF) is broken into:
     Orientation estimation (quaternion + gyro/mag biases)
     Position and velocity estimation
 
@@ -21,7 +21,7 @@ Visualize the existing results through:
 
 ### Using new data
 Step 1.
-- Add `.ulog` to `./Ishaan_TakeHomeData_3Flights/`
+- Add `.ulog` to `./flight_data/`
 
 Step 2.
 - Add filenames to either `TRAINING_FILES` or `TEST_FILES` in `parameter.py`
