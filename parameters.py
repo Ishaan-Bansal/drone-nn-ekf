@@ -25,9 +25,9 @@ LEARNING_RATE = 1e-3
 BATCH_SIZE = 32
 
 # --- Low Pass Filters ---
-ACCEL_LPF_ALPHA_X = 0.01
-ACCEL_LPF_ALPHA_Y = 0.01
-ACCEL_LPF_ALPHA_Z = 0.1
+ACCEL_LPF_ALPHA_X = 0.05
+ACCEL_LPF_ALPHA_Y = 0.05
+ACCEL_LPF_ALPHA_Z = 0.05
 MAG_LPF_ALPHA = 0.1
 GYRO_LPF_ALPHA = 0.1
 BARO_LPF_ALPHA = 0.4
@@ -41,7 +41,7 @@ ORIENTATION_LPF_ALPHA = np.array([
 
 POSITION_LPF_ALPHA = np.array([
     1, 1, 1, # Position (3)
-    0.1, 0.1, 0.5, # Velocity (3)
+    1, 1, 0.9, # Velocity (3)
 ])
 
 # EKF Testing Parameters

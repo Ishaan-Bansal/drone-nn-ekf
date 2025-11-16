@@ -386,15 +386,15 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             "barometer pressure [Pa]": [barometer_reading[0]],
         }
         process_noise_covariance_Q = np.diag([
-            1.0e5, # px
-            1.0e5, # py
-            1.0e2, # pz
-            1.0e-3, # vx
-            1.0e-3, # vy
-            1.0e-3, # vz
+            1.0e0, # px
+            1.0e0, # py
+            1.0e-5, # pz
+            1.0e-2, # vx
+            1.0e-2, # vy
+            1.0e-5, # vz
         ])
         measurement_noise_covariance_R = np.diag([
-            1.0e-5, # baro pressure
+            1.0e5, # baro pressure
         ])
         super().__init__(
             state_dict, input_dict, observation_dict, 
