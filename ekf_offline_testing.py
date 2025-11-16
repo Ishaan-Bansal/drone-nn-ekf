@@ -2,6 +2,7 @@ from pyulog import ULog
 import numpy as np
 import torch
 import copy
+from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
 from estimator import Orientation_EKF, Position_Velocity_EKF
 from sensors import Sensor
@@ -150,7 +151,7 @@ def run_test(filename, with_nn=False):
     print("EKF initialized")
 
     # ---- Scenario 1: Full Predict + Update ----
-    for curr_time in time_steps:
+    for curr_time in tqdm(time_steps, desc=f"[{filename}] Full EKF"):
         # Input sensor readings into EKFs
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
         gyro_filtered = sensor_combined_gyro.get_data(curr_time)
@@ -179,7 +180,7 @@ def run_test(filename, with_nn=False):
         position_full.update()
         position_full.update_ekf_history(time=curr_time)
 
-    # ---- Scenario 2: Predict  ----
+    # ---- Scenario 2: Predict Only ----
     # Sensor Restart
     sensor_mag = Sensor('magnetometer', mag_msgs, ['x', 'y', 'z'], alpha=np.ones(3)*MAG_LPF_ALPHA)
     sensor_combined_accel = Sensor(
@@ -202,7 +203,7 @@ def run_test(filename, with_nn=False):
         timestamps_combined[0],
         timestamps_baro[0]
     )
-    for curr_time in np.arange(start_time, end_time, PRED_DT):
+    for curr_time in tqdm(np.arange(start_time, end_time, PRED_DT), desc=f"[{filename}] Predict Only"):
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
         gyro_filtered = sensor_combined_gyro.get_data(curr_time)
         orientation_pred.current_input = np.array(gyro_filtered)
@@ -232,7 +233,7 @@ def run_test(filename, with_nn=False):
         alpha=np.ones(1)*BARO_LPF_ALPHA, enable_extrapolation=False
     )
 
-    for curr_time in time_steps:
+    for curr_time in tqdm(time_steps, desc=f"[{filename}] Update Only"):
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
         gyro_filtered = sensor_combined_gyro.get_data(curr_time)
         magnetometer_filtered = sensor_mag.get_data(curr_time)
@@ -300,7 +301,7 @@ def run_test(filename, with_nn=False):
         input_std = normalization_stats["input_std"]
 
         # Testing loop
-        for curr_time in time_steps:
+        for curr_time in tqdm(time_steps, desc=f"[{filename}] Full EKF + NN"):
             # Prediction steps
             for _ in range(PRED_STEPS_PER_UPDATE):
                 curr_time += PRED_DT
@@ -370,6 +371,7 @@ def run_test(filename, with_nn=False):
 
 
     # ---- Export Results ----
+    print(f"Exporting results for {filename}")
     orientation_full.export(f'EKF_data/{filename}_orientation_ekf_full')
     position_full.export(f'EKF_data/{filename}_position_ekf_full')
 
@@ -387,7 +389,7 @@ def run_test(filename, with_nn=False):
 
 
 if __name__=="__main__":
-    for file in TRAINING_FILES:
+    for file in tqdm(TRAINING_FILES, desc="Processing Training Files"):
         run_test(file)
-    for file in TEST_FILES:
+    for file in tqdm(TEST_FILES, desc="Processing Test Files"):
         run_test(file)
