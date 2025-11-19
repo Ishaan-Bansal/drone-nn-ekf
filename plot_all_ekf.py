@@ -6,8 +6,6 @@ import matplotlib.cm as cm
 from pyulog import ULog
 from parameters import TEST_FILES, TRAINING_FILES
 
-plt.style.use('dark_background')
-
 EKF_DATA_DIR = "./ekf_data"
 PX4_DATA_DIR = "./flight_data"
 

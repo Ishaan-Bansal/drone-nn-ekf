@@ -349,7 +349,7 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
         self.PREDICTION_TIMESTEP = prediction_timestep
  
         # Atmospheric Parameters (for baro)
-        self.PRESSURE_SEA_LEVEL_Pa = PRESSURE_SEA_LEVEL_Pa 
+        self.INITIAL_PRESSURE_Pa = barometer_reading[0] 
         # Sea level standard atmospheric pressure [Pa]
         self.ROOM_TEMPERATURE_K = ROOM_TEMPERATURE_K 
         # Standard room temperature [K]
@@ -386,15 +386,15 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
             "barometer pressure [Pa]": [barometer_reading[0]],
         }
         process_noise_covariance_Q = np.diag([
-            1.0e5, # px
-            1.0e5, # py
-            1.0e2, # pz
-            1.0e-3, # vx
-            1.0e-3, # vy
-            1.0e-3, # vz
+            1.0e0, # px
+            1.0e0, # py
+            1.0e-5, # pz
+            1.0e-2, # vx
+            1.0e-2, # vy
+            1.0e-5, # vz
         ])
         measurement_noise_covariance_R = np.diag([
-            1.0e-5, # baro pressure
+            1.0e5, # baro pressure
         ])
         super().__init__(
             state_dict, input_dict, observation_dict, 
@@ -406,7 +406,7 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
     def update_orientation(self, orientation: np.ndarray) -> None:
         self.orientation_state = orientation
 
-    def get_state_transition_matrix_A(self) -> np.ndarray: #TODO
+    def get_state_transition_matrix_A(self) -> np.ndarray:
         dt = self.PREDICTION_TIMESTEP
         state_transition_matrix = np.array([
             [1, 0, 0, dt, 0, 0], 
@@ -420,7 +420,7 @@ class Position_Velocity_EKF(Extended_Kalman_Filter):
 
     def observation_model(self, state) -> np.ndarray:
         altitude_m = state[2]
-        P_0 = self.PRESSURE_SEA_LEVEL_Pa
+        P_0 = self.INITIAL_PRESSURE_Pa
         R = self.UNIVERSAL_GAS_CONSTANT_JmolK
         M = self.AIR_MOLAR_MASS_kgmol
         g = self.GRAVITATION_ACCELERATION_ms2

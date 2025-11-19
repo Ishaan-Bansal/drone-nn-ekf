@@ -94,12 +94,17 @@ def run_test(filename, with_nn=False):
     att_topic = next(x for x in ulog.data_list if x.name == 'vehicle_attitude')
 
     # ---- Time Alignment ----
+    start_time = max(
+        timestamps_mag[0],
+        timestamps_combined[0],
+        timestamps_baro[0],
+    ) + INIT_TIME
     end_time = min(
         timestamps_mag[-1],
         timestamps_combined[-1],
         timestamps_baro[-1]
     )
-    time_steps = np.arange(INIT_TIME, end_time, UPDATE_DT)
+    time_steps = np.arange(start_time, end_time, UPDATE_DT)
 
     print("EKF boot up")
 
@@ -198,12 +203,7 @@ def run_test(filename, with_nn=False):
         alpha=np.ones(1)*BARO_LPF_ALPHA, enable_extrapolation=False
     )
 
-    start_time = max(
-        timestamps_mag[0],
-        timestamps_combined[0],
-        timestamps_baro[0]
-    )
-    for curr_time in tqdm(np.arange(start_time, end_time, PRED_DT), desc=f"[{filename}] Predict Only"):
+    for curr_time in tqdm(time_steps, desc=f"[{filename}] Predict Only"):
         accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
         gyro_filtered = sensor_combined_gyro.get_data(curr_time)
         orientation_pred.current_input = np.array(gyro_filtered)
@@ -249,7 +249,7 @@ def run_test(filename, with_nn=False):
 
         # Position EKF Update — manual
         pz = (
-            np.log(baro_pressure_filtered[0] / position_upd.PRESSURE_SEA_LEVEL_Pa) *
+            np.log(baro_pressure_filtered[0] / position_upd.INITIAL_PRESSURE_Pa) *
             position_upd.ROOM_TEMPERATURE_K *
             position_upd.UNIVERSAL_GAS_CONSTANT_JmolK / (
                 position_upd.AIR_MOLAR_MASS_kgmol *
@@ -302,19 +302,32 @@ def run_test(filename, with_nn=False):
 
         # Testing loop
         for curr_time in tqdm(time_steps, desc=f"[{filename}] Full EKF + NN"):
-            # Prediction steps
-            for _ in range(PRED_STEPS_PER_UPDATE):
-                curr_time += PRED_DT
-                orientation_full_nn.predict()
-                position_full_nn.update_orientation(orientation_full_nn.current_state[:4])
-                position_full_nn.predict()
-                orientation_full_nn.update_ekf_history(time=curr_time)
-                position_full_nn.update_ekf_history(time=curr_time)
-
+            # Input sensor readings into EKFs
             accelerometer_filtered = sensor_combined_accel.get_data(curr_time)
             gyro_filtered = sensor_combined_gyro.get_data(curr_time)
             magnetometer_filtered = sensor_mag.get_data(curr_time)
             baro_pressure_filtered = sensor_baro.get_data(curr_time)
+        
+            orientation_full.set_observation_and_input(
+                np.concatenate([accelerometer_filtered, magnetometer_filtered]),
+                gyro_filtered
+            )
+            position_full.set_observation_and_input(
+                baro_pressure_filtered,
+                accelerometer_filtered,
+            )
+            # Prediction steps
+            orientation_full.predict()
+            position_full.update_orientation(orientation_full.current_state[:4])
+            position_full.predict()
+
+            # Update Orientation EKF
+            orientation_full.update()
+            orientation_full.update_ekf_history(time=curr_time)
+
+            # Update Position EKF
+            position_full.update_orientation(orientation_full.current_state[:4])
+            position_full.update()
 
             # Neural Net Correction
             ekf_state = np.concat((
@@ -346,29 +359,9 @@ def run_test(filename, with_nn=False):
                 corrected_state[6:],
                 orientation_full_nn.current_state[4:]
             )))
-            
-            # Update Orientation EKF
-            orientation_full_nn.set_observation(
-                np.array([
-                    accelerometer_filtered[0],
-                    accelerometer_filtered[1],
-                    accelerometer_filtered[2],
-                    magnetometer_filtered[0], magnetometer_filtered[1], magnetometer_filtered[2],
-                ]),
-                gyro_filtered
-            )
-            orientation_full_nn.update()
-            orientation_full_nn.update_ekf_history(time=curr_time)
 
-            # Update Position EKF only when new barometer data is available
-            position_full_nn.set_observation(
-                baro_pressure_filtered,
-                accelerometer_filtered,
-            )
-            position_full_nn.update_orientation(orientation_full_nn.current_state[:4])
-            position_full_nn.update()
-            position_full_nn.update_ekf_history(time=curr_time)
-
+            orientation_full.update_ekf_history(time=curr_time)
+            position_full.update_ekf_history(time=curr_time)
 
     # ---- Export Results ----
     print(f"Exporting results for {filename}")

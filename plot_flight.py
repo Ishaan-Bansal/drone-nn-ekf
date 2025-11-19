@@ -6,10 +6,10 @@ from signal_filters import LowPassFilter
 from parameters import (
     ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z,
     MAG_LPF_ALPHA, GYRO_LPF_ALPHA, BARO_LPF_ALPHA,
-    TRAINING_FILES
+    TRAINING_FILES, TEST_FILES,
 )
 
-filename = TRAINING_FILES[0] 
+filename = TRAINING_FILES[1] 
 ulog_file = f'flight_data/{filename}.ulg'
 log = ULog(ulog_file)
 

@@ -1,7 +1,6 @@
 import numpy as np
 
 import matplotlib.pyplot as plt
-plt.style.use('dark_background')
 
 x = np.linspace(-3, 3, 400)
 relu = np.maximum(0, x)

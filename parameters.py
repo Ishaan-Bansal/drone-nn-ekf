@@ -11,11 +11,20 @@ AIR_MOLAR_MASS_kgmol = 0.0289644 # Molar mass of dry air [kg/mol]
 
 # --- Neural Net Parameters ---
 TRAINING_FILES = [
-    "log_0_2025-8-15-20-14-26", 
+    # "log_0_2025-8-15-20-14-26", 
     # "log_2_2025-8-15-12-31-04", 
-    # "log_0_2025-8-15-13-19-30", 
+    # "log_0_2025-8-15-13-19-30",
+    "04_48_00",
+    # "04_50_46",
+    # "04_53_08",
 ]
 TEST_FILES = [
+    # "05_11_56",
+    # "05_14_55",
+    # "05_17_12",
+    # "05_36_10",
+    # "05_38_54",
+    # "05_41_13",
 ]
 
 NUM_EPOCHS = 200 # Numbers of times to loop over data
@@ -25,10 +34,10 @@ LEARNING_RATE = 1e-3
 BATCH_SIZE = 32
 
 # --- Low Pass Filters ---
-ACCEL_LPF_ALPHA_X = 0.01
-ACCEL_LPF_ALPHA_Y = 0.01
-ACCEL_LPF_ALPHA_Z = 0.1
-MAG_LPF_ALPHA = 0.1
+ACCEL_LPF_ALPHA_X = 0.05
+ACCEL_LPF_ALPHA_Y = 0.05
+ACCEL_LPF_ALPHA_Z = 0.05
+MAG_LPF_ALPHA = 0.5
 GYRO_LPF_ALPHA = 0.1
 BARO_LPF_ALPHA = 0.4
 
@@ -41,8 +50,8 @@ ORIENTATION_LPF_ALPHA = np.array([
 
 POSITION_LPF_ALPHA = np.array([
     1, 1, 1, # Position (3)
-    0.1, 0.1, 0.5, # Velocity (3)
+    1, 1, 0.9, # Velocity (3)
 ])
 
 # EKF Testing Parameters
-INIT_TIME = 7.0 # seconds
+INIT_TIME = 2.0 # seconds

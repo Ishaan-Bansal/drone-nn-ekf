@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from parameters import TRAINING_FILES, TEST_FILES
+import os
 
 filename = TRAINING_FILES[0]
 WITH_NN = False  # Set to True if comparing EKF + NN
@@ -538,6 +539,27 @@ ax_inn_pos.grid()
 ax_inn_pos.legend()
 ax_inn_pos.set_yscale('log')
 ax_inn_pos.set_title('Position Innovation Covariance (Barometer Measurement)')
+
+# out_dir = os.path.join('plots', filename)
+# os.makedirs(out_dir, exist_ok=True)
+
+# fig_names = [
+#     'fig_quat_comp', 'fig_euler_comp', 'fig_pos', 'fig_err_quat',
+#     'fig_err_euler', 'fig_err_pos', 'fig_err_vel', 'fig_bias',
+#     'fig_est_cov_orient', 'fig_est_cov_bias', 'fig_inn_cov_orient',
+#     'fig_est_cov_pos', 'fig_inn_cov_pos'
+# ]
+
+# for var in fig_names:
+#     fig = globals().get(var)
+#     if fig is None:
+#         continue
+#     base_path = os.path.join(out_dir, f"{filename}_{var}")
+#     try:
+#         fig.savefig(base_path + '.png', dpi=200, bbox_inches='tight')
+#         fig.savefig(base_path + '.pdf', dpi=200, bbox_inches='tight')
+#     except Exception as e:
+#         print(f"Failed saving {var}: {e}")
 
 # -- Show all plots ---
 plt.tight_layout()

@@ -5,7 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
 from pyulog import ULog
-from signal_filters import LowPassFilter
+from sensors import Sensor
 from parameters import (
     TRAINING_FILES, TEST_FILES, 
     NUM_EPOCHS, NUM_NEURONS, NUM_LAYERS, BATCH_SIZE, LEARNING_RATE,
@@ -13,6 +13,7 @@ from parameters import (
     MAG_LPF_ALPHA, GYRO_LPF_ALPHA, BARO_LPF_ALPHA
 )
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -34,8 +35,8 @@ class EKFResidualDataset(Dataset):
     def __init__(self, ekf_triplets,  # list of (orientation_csv, position_csv, px4_ulog)
                  px4_state_topic='vehicle_local_position',
                  px4_attitude_topic='vehicle_attitude',
-                 accel_topic='sensor_accel',
-                 gyro_topic='sensor_gyro',
+                 accel_topic='sensor_combined',
+                 gyro_topic='sensor_combined',
                  baro_topic='sensor_baro',
                  mag_topic='sensor_mag',
                  time_tolerance=0.02,
@@ -104,31 +105,33 @@ class EKFResidualDataset(Dataset):
             px4_state_time = posvel_time
             px4_states = np.hstack([pos_data, vel_data, quat_data_synced])
 
+            # --- PX4 Sensors using Sensor class ---
+            sensor_combined = next(x for x in log.data_list if x.name == accel_topic)
+            mag_topic_obj = next(x for x in log.data_list if x.name == mag_topic)
+            baro_topic_obj = next(x for x in log.data_list if x.name == baro_topic)
 
-            # PX4 Sensors
-            accel = next(x for x in log.data_list if x.name == accel_topic)
-            gyro = next(x for x in log.data_list if x.name == gyro_topic)
-            baro = next(x for x in log.data_list if x.name == baro_topic)
-            mag = next(x for x in log.data_list if x.name == mag_topic)
-
-            accel_time = accel.data['timestamp'] * 1e-6
-            accel_data = np.vstack([accel.data['x'], accel.data['y'], accel.data['z']]).T
-
-            gyro_time = gyro.data['timestamp'] * 1e-6
-            gyro_data = np.vstack([gyro.data['x'], gyro.data['y'], gyro.data['z']]).T
-
-            baro_time = baro.data['timestamp'] * 1e-6
-            baro_data = baro.data['pressure'].reshape(-1, 1)
-
-            mag_time = mag.data['timestamp'] * 1e-6
-            mag_data = np.vstack([mag.data['x'], mag.data['y'], mag.data['z']]).T
-
-            accel_lpf = LowPassFilter(
-                alpha=np.array([ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z]
-            ))
-            gyro_lpf = LowPassFilter(alpha=np.ones(3)*GYRO_LPF_ALPHA)
-            mag_lpf = LowPassFilter(alpha=np.ones(3)*MAG_LPF_ALPHA)
-            baro_lpf = LowPassFilter(alpha=np.ones(1)*BARO_LPF_ALPHA)
+            # Create Sensor instances
+            accel_sensor = Sensor(
+                'accelerometer', sensor_combined,
+                ['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
+                alpha=np.array([ACCEL_LPF_ALPHA_X, ACCEL_LPF_ALPHA_Y, ACCEL_LPF_ALPHA_Z])
+            )
+            gyro_sensor = Sensor(
+                'gyroscope', sensor_combined,
+                ['gyro_rad[0]', 'gyro_rad[1]', 'gyro_rad[2]'],
+                alpha=np.ones(3)*GYRO_LPF_ALPHA
+            )
+            mag_sensor = Sensor(
+                'magnetometer', mag_topic_obj,
+                ['x', 'y', 'z'],
+                alpha=np.ones(3)*MAG_LPF_ALPHA
+            )
+            baro_sensor = Sensor(
+                'barometer', baro_topic_obj,
+                ['pressure'],
+                alpha=np.ones(1)*BARO_LPF_ALPHA,
+                enable_extrapolation=False
+            )
 
             # Iterate through EKF times
             for idx, t_ekf in enumerate(ekf_time):
@@ -138,22 +141,11 @@ class EKFResidualDataset(Dataset):
 
                 px4_state_vec = px4_states[s_idx]
 
-                # Get nearest sensor values
-                a_idx = np.argmin(np.abs(accel_time - t_ekf))
-                g_idx = np.argmin(np.abs(gyro_time - t_ekf))
-                b_idx = np.argmin(np.abs(baro_time - t_ekf))
-                m_idx = np.argmin(np.abs(mag_time - t_ekf))
-
-                accel_vec_raw = accel_data[a_idx]
-                gyro_vec_raw  = gyro_data[g_idx]
-                baro_val_raw  = baro_data[b_idx][0]  # baro_data is Nx1
-                mag_vec_raw   = mag_data[m_idx]
-
-                # Apply LPF to match EKF preprocessing
-                accel_vec_filt = accel_lpf.update(accel_vec_raw)
-                gyro_vec_filt  = gyro_lpf.update(gyro_vec_raw)
-                baro_val_filt  = baro_lpf.update(baro_val_raw)
-                mag_vec_filt   = mag_lpf.update(mag_vec_raw)
+                # Get sensor data using Sensor.get_data()
+                accel_vec_filt = accel_sensor.get_data(t_ekf)
+                gyro_vec_filt = gyro_sensor.get_data(t_ekf)
+                mag_vec_filt = mag_sensor.get_data(t_ekf)
+                baro_val_filt = baro_sensor.get_data(t_ekf)
 
                 # NN input: EKF state + filtered PX4 sensors
                 sensor_vec = np.concatenate([
@@ -163,11 +155,9 @@ class EKFResidualDataset(Dataset):
                     mag_vec_filt
                 ])
                 nn_input = np.concatenate([ekf_states[idx], sensor_vec])
-                # nn_input = ekf_states[idx]
 
-                # NN target: residual = PX4 state - EKF state - only pos, vel
+                # NN target: residual = PX4 state - EKF state
                 residual = px4_state_vec - ekf_states[idx]
-                # residual = residual[:6]
 
                 all_inputs.append(nn_input)
                 all_targets.append(residual)
@@ -219,23 +209,26 @@ class Residual_Estimator(nn.Module):
 
 if __name__=="__main__":
     print("Using device: ", device)
-     # List of (EKF CSV file, PX4 .ulg file) pairs
+    
+    # List of (EKF CSV file, PX4 .ulg file) pairs
     train_ekf_ulog_pairs = [
-        (f'./EKF_data/{filename}_orientation_ekf_full_states.csv',
-         f'./EKF_data/{filename}_position_ekf_full_states.csv', 
-         f'./Ishaan_TakeHomeData_3Flights/{filename}.ulg')
+        (f'./ekf_data/{filename}_orientation_ekf_full_states.csv',
+         f'./ekf_data/{filename}_position_ekf_full_states.csv', 
+         f'./flight_data/{filename}.ulg')
          for filename in TRAINING_FILES
     ]
 
     test_ekf_ulog_pairs = [
-        (f'./EKF_data/{filename}_orientation_ekf_full_states.csv',
-         f'./EKF_data/{filename}_position_ekf_full_states.csv', 
-         f'./Ishaan_TakeHomeData_3Flights/{filename}.ulg')
+        (f'./ekf_data/{filename}_orientation_ekf_full_states.csv',
+         f'./ekf_data/{filename}_position_ekf_full_states.csv', 
+         f'./flight_data/{filename}.ulg')
          for filename in TEST_FILES
     ]
 
     # Create dataset and data loader
+    print("Creating training dataset...")
     train_dataset = EKFResidualDataset(train_ekf_ulog_pairs, time_tolerance=0.03)
+    print("Creating test dataset...")
     test_dataset = EKFResidualDataset(test_ekf_ulog_pairs, time_tolerance=0.03)
     train_dataset.targets = smooth_targets(train_dataset.targets, window=10)
 
@@ -259,7 +252,7 @@ if __name__=="__main__":
     test_dataset.targets = (test_dataset.targets - target_mean) / target_std
 
     # Save training distribution
-    np.savez("NN/normalization_stats.npz",
+    np.savez("neural_net/normalization_stats.npz",
          input_mean=input_mean,
          input_std=input_std,
          target_mean=target_mean,
@@ -270,7 +263,7 @@ if __name__=="__main__":
 
     # Model init
     num_inputs = train_dataset.inputs.shape[1]   # 20 features: EKF state + PX4 sensors
-    num_outputs = train_dataset.targets.shape[1] # 6 features: residual (pos+vel)
+    num_outputs = train_dataset.targets.shape[1] # 10 features: residual (pos+vel+quat)
     model = Residual_Estimator(
         num_inputs, num_outputs, num_units=NUM_NEURONS, num_layers=NUM_LAYERS
     ).to(device)
@@ -284,11 +277,11 @@ if __name__=="__main__":
     train_losses = []
     test_losses = []
 
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs), desc="Training Epochs"):
         model.train()
         total_train_loss = 0.0
 
-        for X_batch, y_batch in train_loader:
+        for X_batch, y_batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} - Train", leave=False):
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
 
             optimizer.zero_grad()
@@ -305,7 +298,7 @@ if __name__=="__main__":
         model.eval()
         total_test_loss = 0.0
         with torch.no_grad():
-            for X_batch, y_batch in test_loader:
+            for X_batch, y_batch in tqdm(test_loader, desc=f"Epoch {epoch+1}/{epochs} - Test", leave=False):
                 X_batch, y_batch = X_batch.to(device), y_batch.to(device)
                 y_pred = model(X_batch)
                 loss = criterion(y_pred, y_batch)
@@ -313,11 +306,12 @@ if __name__=="__main__":
         avg_test_loss = total_test_loss / len(test_dataset)
         test_losses.append(avg_test_loss)
 
-        print(f"Epoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.6f} - Test Loss: {avg_test_loss:.6f}")
-    print("Testing and evaluation completed")
+        tqdm.write(f"Epoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.6f} - Test Loss: {avg_test_loss:.6f}")
+    
+    print("Training completed")
 
     # Save only the model's learned parameters
-    torch.save(model.state_dict(), 'NN/residual_estimator_model.pth')
+    torch.save(model.state_dict(), 'neural_net/residual_estimator_model.pth')
 
     # save the entire model (including architecture)
     torch.save(model, 'neural_net/residual_estimator_model_full.pth')

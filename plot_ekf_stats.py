@@ -5,8 +5,6 @@ from pyulog import ULog
 from parameters import TEST_FILES
 import matplotlib.pyplot as plt
 
-plt.style.use('dark_background')
-
 EKF_DATA_DIR = "./EKF_data"
 PX4_DATA_DIR = "./Ishaan_TakeHomeData_3Flights"
 PLOTS_DIR = "./plots"
