@@ -5,8 +5,8 @@ from pyulog import ULog
 from parameters import TEST_FILES
 import matplotlib.pyplot as plt
 
-EKF_DATA_DIR = "./EKF_data"
-PX4_DATA_DIR = "./Ishaan_TakeHomeData_3Flights"
+EKF_DATA_DIR = "./ekf_data"
+PX4_DATA_DIR = "./flight_data"
 PLOTS_DIR = "./plots"
 os.makedirs(PLOTS_DIR, exist_ok=True)
 

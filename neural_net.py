@@ -270,7 +270,11 @@ if __name__=="__main__":
 
     # Optimizer and Loss
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    criterion = nn.SmoothL1Loss()
+    def criterion(prediction, batch):
+        position_loss = nn.MSELoss()(prediction[:, :3], batch[:, :3])
+        velocity_loss = nn.MSELoss()(prediction[:, 3:6], batch[:, 3:6])
+        quat_loss = nn.SmoothL1Loss()(prediction[:, 6:], batch[:, 6:])
+        return position_loss + velocity_loss + quat_loss
 
     # Training loop
     epochs = NUM_EPOCHS
@@ -328,6 +332,7 @@ if __name__=="__main__":
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
+    plt.savefig('neural_net/loss_evolution.png')
 
     model.eval()
     num_samples_to_plot = 100
@@ -359,5 +364,6 @@ if __name__=="__main__":
 
     plt.tight_layout()
     plt.suptitle('Comparison of Neural Network Residual Predictions and True Residuals', y=1.02)
+    plt.savefig('neural_net/residual_comparison.png')
     plt.show()
 

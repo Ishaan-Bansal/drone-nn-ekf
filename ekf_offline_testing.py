@@ -323,7 +323,6 @@ def run_test(filename, with_nn=False):
 
             # Update Orientation EKF
             orientation_full.update()
-            orientation_full.update_ekf_history(time=curr_time)
 
             # Update Position EKF
             position_full.update_orientation(orientation_full.current_state[:4])
@@ -349,6 +348,13 @@ def run_test(filename, with_nn=False):
                 predicted_residual = model(nn_input_tensor)  # shape (1, num_outputs)
             predicted_residual_np = predicted_residual.cpu().numpy().flatten()
 
+            # Zero-out tiny residual components to avoid numerical issues/overflow
+            _elem_threshold = 1e-8
+            predicted_residual_np[np.abs(predicted_residual_np) < _elem_threshold] = 0.0
+            _threshold = 1e-8
+            if np.linalg.norm(predicted_residual_np) < _threshold:
+                predicted_residual_np = np.zeros_like(predicted_residual_np)
+
             predicted_residual_np_unnormalized = predicted_residual_np * target_std + target_mean
 
             # Apply residual correction to EKF estimate
@@ -360,8 +366,8 @@ def run_test(filename, with_nn=False):
                 orientation_full_nn.current_state[4:]
             )))
 
-            orientation_full.update_ekf_history(time=curr_time)
-            position_full.update_ekf_history(time=curr_time)
+            orientation_full_nn.update_ekf_history(time=curr_time)
+            position_full_nn.update_ekf_history(time=curr_time)
 
     # ---- Export Results ----
     print(f"Exporting results for {filename}")
@@ -385,4 +391,4 @@ if __name__=="__main__":
     for file in tqdm(TRAINING_FILES, desc="Processing Training Files"):
         run_test(file)
     for file in tqdm(TEST_FILES, desc="Processing Test Files"):
-        run_test(file)
+        run_test(file, with_nn=True)
